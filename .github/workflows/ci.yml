@@ -71,6 +71,13 @@ jobs:
       - name: Create schema
         run: node tools/init-db.mjs
 
+      - name: Request-transaction RLS leak test
+        # Forces a single pooled client so every request and the probe queries
+        # between them share one backend, then asserts the request.jwt.claims
+        # GUC is visible only inside a request transaction and never survives
+        # COMMIT or ROLLBACK on the pooled connection.
+        run: node tools/leaktest.mjs
+
       - name: Seed the demo ledger
         run: node server/seed.js --force
 

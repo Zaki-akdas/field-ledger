@@ -50,6 +50,9 @@ export default function FieldLayout() {
   const billed = (data?.expected ?? 0) + (data?.cancelled?.amount ?? 0) + (data?.short?.amount ?? 0);
   const due = data?.pending?.amount ?? 0;
   const pendingCount = (data?.bills?.pending || 0) + (data?.bills?.partial || 0);
+  // A subtle green tick once everything on today's book has come in — only
+  // when there actually is a book (an empty day never shows it).
+  const allCollected = billed > 0 && collected >= billed - 0.5;
 
   return (
     <div className="min-h-full">
@@ -62,6 +65,23 @@ export default function FieldLayout() {
             </p>
             <p className="num text-[22px] leading-tight font-medium">
               {loading && !data ? <span className="text-ink-faint text-base">…</span> : <Money value={collected} />}
+              {allCollected && (
+                <svg
+                  role="img"
+                  aria-label="Everything collected today"
+                  viewBox="0 0 24 24"
+                  width="15"
+                  height="15"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="ml-1.5 inline text-settled"
+                >
+                  <path d="M20 6L9 17l-5-5" />
+                </svg>
+              )}
               <span className="ml-2 text-[11.5px] font-sans font-normal text-ink-faint">collected</span>
             </p>
             <p className="num mt-0.5 text-[11.5px] leading-tight text-ink-soft">

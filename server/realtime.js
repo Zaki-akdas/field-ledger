@@ -75,8 +75,12 @@ async function setupListeners() {
   }
 }
 
-// Start listeners on server boot (delayed to let the server start first)
-setTimeout(setupListeners, 1000);
+// Start listeners on server boot (delayed to let the server start first).
+// Skipped on serverless hosts (Vercel) — every warm function instance would
+// otherwise hold its own LISTEN connection open.
+if (!process.env.VERCEL) {
+  setTimeout(setupListeners, 1000);
+}
 
 /** GET /api/realtime — SSE stream. */
 router.get('/', async (req, res) => {

@@ -28,12 +28,22 @@ get routed by role).
 Alternatively, run the two processes separately, which is what the hosted preview does:
 
 ```bash
-npm run dev:api       # Express + SQLite on :4000
+npm run dev:api       # Express + PostgreSQL on :4000
 npm run dev:web       # Vite on :5173, proxies /api → :4000
 ```
 
 For a production-style run: `npm run build && npm start` — Express then serves the built app
 from `:4000` as well as the API.
+
+The server needs a PostgreSQL database. Point `DATABASE_URL` at one (Supabase works out of the
+box), then bootstrap the schema and seed the demo ledger:
+
+```bash
+npm run db:init       # apply server/schema.sql (safe to re-run)
+npm run seed          # 6 salesmen, 10 days of demo data (--force wipes first)
+```
+
+Your real connection string lives in `.env` (gitignored) — never commit it.
 
 ### Demo logins
 
@@ -104,13 +114,40 @@ half-succeeded request can never double-collect a payment. The queue is visible 
 | Layer | Choice |
 |---|---|
 | Front end | React 18 + Vite 5 + Tailwind 3, IBM Plex Sans (UI) / IBM Plex Mono (numbers) |
-| Back end | Express 4 |
-| Database | SQLite via better-sqlite3 (`server/data/ledger.db`) |
+| Back end | Express 4 (`server/app.js` shared by Node and serverless hosts) |
+| Database | Supabase PostgreSQL via `pg` (`server/schema.sql`) |
+| Realtime | PostgreSQL `LISTEN/NOTIFY` triggers → SSE endpoint (`/api/realtime`) |
+| Security | Row-level security policies + per-request DB session context, scrypt hashes |
 | Uploads | multer → `server/uploads/`, parsed with ExcelJS |
 | Exports | ExcelJS (`.xlsx`), PDFKit (`.pdf`) |
 | Auth | Login code + scrypt password hash, random session token in `Authorization: Bearer` |
 
-No external services, no API keys, no network calls at runtime.
+Environment variables: `DATABASE_URL` (required), `DATABASE_SSL=false` (disable TLS for a local
+Postgres), `PORT`, `CORS_ORIGINS` (comma-separated, production), `PGPOOL_MAX` (DB pool size).
+
+---
+
+## Deploying to Vercel
+
+The SPA is built by Vercel and served as static files; every `/api/*` request is rewritten to the
+Express app exported from `api/index.js` (serverless function). Push to `main` → CI runs → the
+**Deploy** workflow ships the validated commit.
+
+**One-time setup:**
+
+1. Create a project on Vercel for this repo. Framework preset **Vite**, build command
+   `npm run build`, output directory **client/dist**.
+2. Add the production environment variables in Vercel: `DATABASE_URL` (your Supabase connection
+   string), `PGPOOL_MAX=3` (serverless instances share the DB connection cap).
+3. Create a token: `vercel login && vercel tokens create`.
+4. Get the IDs: `vercel whoami` (username), then `vercel project inspect <name>` — note the
+   **org id** (`org.id`) and **project id** (`id`).
+5. Add repo secrets so the workflow can deploy: `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+   `VERCEL_PROJECT_ID`.
+
+**Serverless caveats:** uploads land on the function's ephemeral disk (point attachments at
+Supabase Storage for durability), and the realtime SSE listener is disabled when `VERCEL` is set —
+Realtime runs on the Node/VPS host.
 
 ---
 

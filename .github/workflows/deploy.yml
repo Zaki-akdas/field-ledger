@@ -1,0 +1,62 @@
+name: Deploy
+
+# Runs after the CI workflow completes successfully on main, and deploys the
+# exact commit CI validated. Until the repo secrets are configured the job is
+# a no-op with a pointer to the README — see "Deploying to Vercel".
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (production)
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Check deploy secrets are configured
+        id: check
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::warning::VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID not set — skipping deploy. See README → Deploying to Vercel."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout the validated commit
+        uses: actions/checkout@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        if: steps.check.outputs.ok == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.check.outputs.ok == 'true'
+        run: npm ci
+
+      - name: Pull Vercel project settings + environment
+        if: steps.check.outputs.ok == 'true'
+        run: npx vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+
+      - name: Build (SPA + API function)
+        if: steps.check.outputs.ok == 'true'
+        run: npx vercel build --prod --token=$VERCEL_TOKEN
+
+      - name: Deploy to production
+        if: steps.check.outputs.ok == 'true'
+        run: npx vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN

@@ -1,0 +1,15 @@
+# Secrets — never upload local env files
+.env
+.env.*
+
+# Local demo data + build artifacts
+server/data/
+server/uploads/
+client/dist-smoke/
+
+# The SPA is rebuilt by Vercel's build step
+client/dist/
+
+# Tooling noise
+*.log
+.freebuff/

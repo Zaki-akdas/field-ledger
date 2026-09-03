@@ -15,7 +15,9 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
-  max: 20,
+  // Serverless hosts (Vercel) spawn many instances — keep each pool small so
+  // Supabase's connection cap isn't exhausted. PGPOOL_MAX overrides either way.
+  max: Math.min(20, Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 3 : 20))),
   idleTimeoutMillis: 30000,
 });
 

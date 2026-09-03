@@ -19,6 +19,7 @@ import EndDay from './pages/field/EndDay.jsx';
 import Reconciliation from './pages/admin/Reconciliation.jsx';
 import Salesmen from './pages/admin/Salesmen.jsx';
 import SalesmanDetail from './pages/admin/SalesmanDetail.jsx';
+import CollectionReport from './pages/admin/CollectionReport.jsx';
 import AdminBills from './pages/admin/Bills.jsx';
 import Cancellations from './pages/admin/Cancellations.jsx';
 import Shortages from './pages/admin/Shortages.jsx';
@@ -79,6 +80,7 @@ export default function App() {
 
             <Route path="/admin" element={<Guard role="admin"><AdminLayout /></Guard>}>
               <Route index element={<Reconciliation />} />
+              <Route path="collection" element={<CollectionReport />} />
               <Route path="salesmen" element={<Salesmen />} />
               <Route path="salesmen/:id" element={<SalesmanDetail />} />
               <Route path="bills" element={<AdminBills />} />

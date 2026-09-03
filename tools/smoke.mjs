@@ -118,6 +118,7 @@ async function run() {
   check('Salesman-wise table present', /Salesman-wise/.test(t));
 
   for (const [label, needle] of [
+    ['Collection report', 'Grand total'],
     ['Salesmen', 'Billed'],
     ['Bills', 'Invoice'],
     ['Cancellations', 'Reason'],

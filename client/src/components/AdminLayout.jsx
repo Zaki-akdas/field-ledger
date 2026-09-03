@@ -13,6 +13,7 @@ export const useRange = () => useContext(RangeContext);
 
 const NAV = [
   { to: '/admin', label: 'Reconciliation', end: true },
+  { to: '/admin/collection', label: 'Collection report' },
   { to: '/admin/salesmen', label: 'Salesmen' },
   { to: '/admin/bills', label: 'Bills' },
   { to: '/admin/cancellations', label: 'Cancellations' },
@@ -23,6 +24,7 @@ const NAV = [
 
 const EXPORT_BY_PATH = {
   '/admin': 'reconciliation',
+  '/admin/collection': 'collection',
   '/admin/salesmen': 'salesmen',
   '/admin/bills': 'bills',
   '/admin/cancellations': 'cancellations',

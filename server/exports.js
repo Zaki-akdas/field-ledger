@@ -160,6 +160,46 @@ export async function buildWorkbook({ report, from, to, salesmanId }) {
     sheet.addRow(['Bundles for bank deposit']);
   }
 
+  /* Collection report — per-day invoice-wise register in the CO-SHIP layout:
+   * S.No, invoice no, party and amount, one line per invoice, with a subtotal
+   * under each day and a grand total. Cancelled bills are excluded. */
+  if (report === 'collection') {
+    const sheet = wb.addWorksheet('Collection Report');
+    sheet.addRow(['Date', 'S.No', 'Invoice No', 'Party', 'Amount']);
+    const rows = (await billsFor({ from, to, salesmanId })).filter((b) => !b.cancelled_at);
+    let sno = 0;
+    let grand = 0;
+    let dayDate = null;
+    let dayTotal = 0;
+    let dayN = 0;
+    const endDay = () => {
+      if (dayDate === null) return;
+      sheet.addRow(['', '', 'Day total', `${dayN} ${dayN === 1 ? 'bill' : 'bills'}`, dayTotal]);
+      const r = sheet.getRow(sheet.rowCount);
+      r.font = { bold: true };
+      r.getCell(5).numFmt = MONEY_FMT;
+      dayDate = null;
+    };
+    for (const b of rows) {
+      if (b.bill_date !== dayDate) { endDay(); dayDate = b.bill_date; dayTotal = 0; dayN = 0; }
+      sno += 1;
+      dayTotal += Number(b.amount || 0);
+      dayN += 1;
+      grand += Number(b.amount || 0);
+      sheet.addRow([b.bill_date, sno, b.invoice_no, b.shop_name, b.amount]);
+    }
+    endDay();
+    sheet.addRow(['', '', 'Grand total', `${sno} ${sno === 1 ? 'bill' : 'bills'}`, grand]);
+    const gt = sheet.getRow(sheet.rowCount);
+    gt.font = { bold: true, size: 12 };
+    gt.getCell(5).numFmt = MONEY_FMT;
+    styleHeader(sheet);
+    moneyCells(sheet, [5]);
+    autosize(sheet, [13, 8, 22, 36, 16]);
+    sheet.addRow([]);
+    sheet.addRow([`Period: ${from} to ${to} · cancelled bills excluded`]);
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer, filename: `field-ledger-${report}-${from}_to_${to}.xlsx` };
 }
@@ -285,6 +325,49 @@ export async function buildPdf({ report, from, to, salesmanId }) {
     doc.moveDown(0.6);
     doc.font('Helvetica').fontSize(9).fillColor('#182233')
       .text(`Cash collected between ${from} and ${to}. Use this sheet to prepare bank deposit bundles.`);
+  }
+
+  /* Collection report — invoice-wise per-day register (CO-SHIP layout). */
+  if (report === 'collection') {
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#182233').text('Collection Report');
+    doc.font('Helvetica').fontSize(8.5).fillColor('#5A6B7B')
+      .text('Invoice-wise register · cancelled bills excluded · amounts in rupees');
+    doc.moveDown(0.5);
+    const totalLine = (label, n, amount) => {
+      const y0 = doc.y;
+      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#182233');
+      doc.text(`${label} (${n} ${n === 1 ? 'bill' : 'bills'})`, 36, y0, { width: 300 })
+        .text(rs(amount), { width: 180, align: 'right' });
+      doc.moveDown(0.5);
+    };
+    const rows = (await billsFor({ from, to, salesmanId })).filter((b) => !b.cancelled_at);
+    let sno = 0;
+    let grand = 0;
+    let dayDate = null;
+    const dayRows = [];
+    const flushDay = async () => {
+      if (dayDate === null) return;
+      if (doc.y > doc.page.height - 160) doc.addPage();
+      doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#182233')
+        .text(`${dayDate} · ${dayRows.length} ${dayRows.length === 1 ? 'bill' : 'bills'}`);
+      doc.moveDown(0.3);
+      pdfTable(doc, ['S.No', 'Invoice', 'Party', 'Amount'], dayRows, [42, 120, 205, 90]);
+      totalLine('Day total', dayRows.length, dayRows.reduce((a, r) => a + Number(r[3] ? r[3].replace(/[^\d.]/g, '') : 0), 0));
+      dayRows.length = 0;
+    };
+    for (const b of rows) {
+      if (b.bill_date !== dayDate) {
+        await flushDay();
+        dayDate = b.bill_date;
+        doc.moveDown(0.2);
+      }
+      sno += 1;
+      grand += Number(b.amount || 0);
+      dayRows.push([sno, b.invoice_no, b.shop_name.slice(0, 30), rs(b.amount)]);
+    }
+    await flushDay();
+    doc.moveDown(0.8);
+    totalLine('Grand total', sno, grand);
   }
 
   const pageCount = doc.bufferedPageRange().count;

@@ -156,7 +156,7 @@ async function main() {
   check('Unreadable file returns a helpful 400', junkRes.status === 400 && /Re-save/.test(junkRes.data.error), junkRes.data.error);
 
   /* ------------------------------------------------------- exports --- */
-  for (const report of ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup']) {
+  for (const report of ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection']) {
     const x = await call('GET', `/export/${report}?format=xlsx&${RANGE}`, { token: A });
     const p = await call('GET', `/export/${report}?format=pdf&${RANGE}`, { token: A });
     check(`Export ${report} (xlsx + pdf)`,

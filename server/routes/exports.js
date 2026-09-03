@@ -5,7 +5,7 @@ import { buildWorkbook, buildPdf, range } from '../exports.js';
 export const router = Router();
 router.use(requireAuth);
 
-const REPORTS = ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup'];
+const REPORTS = ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection'];
 
 router.get('/:report', async (req, res, next) => {
   try {

@@ -63,7 +63,13 @@ jobs:
         run: |
           set -o pipefail
           npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN" 2>&1 | tee deploy.log
-          url=$(grep -oE 'https://[A-Za-z0-9.-]+\.vercel\.app' deploy.log | head -1 || true)
+          # Prefer the stable aliased URL (project's production domain). The
+          # deployment-specific URL can be SSO-protected for org accounts,
+          # which would make the public verification step fail with 302s.
+          url=$(grep -oE 'Aliased\s+https://[A-Za-z0-9.-]+\.vercel\.app' deploy.log | grep -oE 'https://[A-Za-z0-9.-]+\.vercel\.app' | head -1 || true)
+          if [ -z "$url" ]; then
+            url=$(grep -oE 'https://[A-Za-z0-9.-]+\.vercel\.app' deploy.log | head -1 || true)
+          fi
           if [ -z "$url" ]; then
             echo "::error::Could not read the deployment URL from the vercel output"
             tail -20 deploy.log

@@ -200,6 +200,8 @@ client/src/
 tools/
   smoke.mjs           jsdom smoke test: signs in, walks every screen, fails on React errors
   apitest.mjs         API regression: reconciliation identity, validation, replay, exports
+  loadtest.mjs        concurrency burst: reconciliation-heavy requests, fails on any
+                      non-200 or EMAXCONNSESSION (the connection-cap regression guard)
   classcheck.mjs      proves every Tailwind class in the source exists in the built CSS
   mkbook.mjs          makes a sample dispatch workbook for trying the importer
 ```
@@ -213,6 +215,8 @@ npm run smoke         # 25 UI checks: login, every admin screen, drill-down, fie
 npm run apitest       # API regression: reconciliation identity, every validation rule,
                       #   offline replay idempotency, imports, exports, attachment
                       #   storage round-trip (needs the API running + DATABASE_URL)
+npm run loadtest      # concurrency guard: fires the reconciliation burst and asserts no
+                      #   connection-cap errors, so that regression can't come back
 npm run check:classes # every Tailwind class used in the source exists in the built CSS
 ```
 

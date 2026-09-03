@@ -91,6 +91,11 @@ jobs:
       - name: API regression tests
         run: node tools/apitest.mjs
 
+      - name: Concurrency load test (no EMAXCONNSESSION)
+        # Fires the reconciliation-heavy burst that used to exhaust Supabase's
+        # session cap and hang the API; fails on any non-200 or connection error.
+        run: node tools/loadtest.mjs
+
       - name: UI smoke test (jsdom)
         run: npm run smoke
 

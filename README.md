@@ -154,6 +154,15 @@ typically one hour (`UPLOAD_SIGN_TTL` seconds) and are rejected after that or wh
 The signing key is derived from `DATABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, or pin it explicitly
 with `UPLOAD_SIGN_SECRET` (recommended on multi-instance hosts).
 
+Day-end report email: when a salesman ends his day, the server emails the day's collection
+report (the CO-SHIP PDF + Excel register) to the office. It activates only when SMTP is
+configured: `SMTP_HOST`, `SMTP_PORT` (default 587), `SMTP_SECURE` (set `true` for port 465),
+`SMTP_USER`, `SMTP_PASS` and `OFFICE_EMAIL` (recipient); `MAIL_FROM` defaults to `SMTP_USER`.
+Until those exist the email is skipped — the End-day screen's **Share** button (system share
+sheet / download) always works instead. A sending failure never blocks the day end, and the
+route reports the outcome (`report_email: sent | failed | no-bills | unconfigured`) so the app
+can tell the salesman what happened. See `.env.example` for the full key list.
+
 ---
 
 ## Deploying to Vercel
@@ -170,7 +179,8 @@ Express app exported from `api/index.js` (serverless function). Push to `main` �
    **transaction-mode pooler** connection string on port **6543**), `PGPOOL_MAX=3` (serverless
    instances keep tiny pools), and the storage keys `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
    so photo uploads survive cold starts. (Realtime is off on Vercel, so no `REALTIME_DATABASE_URL`
-   is needed there.)
+   is needed there.) To enable the automatic day-end email to the office, also add the SMTP
+   keys and `OFFICE_EMAIL` listed under "Day-end report email" above.
 3. Create a token: `vercel login && vercel tokens create`.
 4. Get the IDs: `vercel whoami` (username), then `vercel project inspect <name>` — note the
    **org id** (`org.id`) and **project id** (`id`).

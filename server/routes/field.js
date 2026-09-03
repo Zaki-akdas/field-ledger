@@ -166,7 +166,45 @@ router.post('/session/end', handle(async (req, res) => {
     [req.user.id, date, req.body?.note || null],
   );
   const session = await q1('SELECT * FROM day_sessions WHERE salesman_id = $1 AND work_date = $2', [req.user.id, date]);
-  res.json({ session });
+
+  // Auto-email the day's collection report (PDF + Excel) to the office.
+  // Runs only when SMTP is configured; failures never break the day end.
+  let report_email = 'unconfigured';
+  if (!process.env.OFFICE_EMAIL) {
+    report_email = 'unconfigured';
+  } else {
+    try {
+      const mail = await import('../mail.js');
+      if (mail.isMailConfigured()) {
+        const ex = await import('../exports.js');
+        const summary = await ex.collectionSummary({ from: date, to: date, salesmanId: req.user.id });
+        if (summary.count > 0) {
+          const [pdf, xlsx] = await Promise.all([
+            ex.buildPdf({ report: 'collection', from: date, to: date, salesmanId: req.user.id }),
+            ex.buildWorkbook({ report: 'collection', from: date, to: date, salesmanId: req.user.id }),
+          ]);
+          const send = mail.sendDayReportEmail({
+            to: process.env.OFFICE_EMAIL,
+            salesman: req.user,
+            date,
+            summary,
+            attachments: [
+              { filename: pdf.filename, content: Buffer.from(pdf.buffer), contentType: 'application/pdf' },
+              { filename: xlsx.filename, content: Buffer.from(xlsx.buffer), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+            ],
+          });
+          const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('SMTP send timed out')), 8000));
+          report_email = (await Promise.race([send, timeout])).ok ? 'sent' : 'failed';
+        } else {
+          report_email = 'no-bills';
+        }
+      }
+    } catch (err) {
+      report_email = 'failed';
+      console.error('day-end report email failed:', err.message);
+    }
+  }
+  res.json({ session, report_email });
 }));
 
 /* ------------------------------------------------------------ dashboard --- */

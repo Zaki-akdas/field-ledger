@@ -7,6 +7,7 @@ server/uploads/*
 server/data/
 .env
 .env.*
+!.env.example
 *.log
 
 # Vercel local link artifacts

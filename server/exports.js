@@ -47,6 +47,23 @@ function autosize(sheet, widths) {
   widths.forEach((w, i) => { sheet.getColumn(i + 1).width = w; });
 }
 
+/** Billed / collected / balance totals for the collection report — the same
+ *  figures the workbook, PDF and screens show. Used by the day-end email. */
+export async function collectionSummary({ from, to, salesmanId }) {
+  const rows = (await billsFor({ from, to, salesmanId })).filter((b) => !b.cancelled_at);
+  let billed = 0;
+  let collected = 0;
+  let balance = 0;
+  for (const b of rows) {
+    const c = round2(Number(b.collected_amount) || 0);
+    const bal = Math.max(0, round2((Number(b.amount) || 0) - (Number(b.short_amount) || 0) - c));
+    billed += Number(b.amount || 0);
+    collected += c;
+    balance += bal;
+  }
+  return { count: rows.length, billed: round2(billed), collected: round2(collected), balance: round2(balance) };
+}
+
 export async function buildWorkbook({ report, from, to, salesmanId }) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Field Ledger';

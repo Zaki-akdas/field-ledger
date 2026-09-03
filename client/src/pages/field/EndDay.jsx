@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useAuth, useToast } from '../../lib/context.jsx';
-import { api, downloadExport } from '../../lib/api.js';
+import { api, downloadExport, shareExport } from '../../lib/api.js';
 import { todayISO, money, MODE_LABEL, dateLabel } from '../../lib/format.js';
 import {
   Btn, Card, ErrorNote, Field, KeyValue, Loading, Money, SectionTitle, Textarea, Variance,
@@ -24,6 +24,7 @@ export default function EndDay() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(null); // 'xlsx' | 'pdf'
+  const [sharing, setSharing] = useState(false);
   const { data: sessionData, loading, reload: reloadSession } = useApi('/session/today');
   const { data: dash, reload } = useApi(`/me/dashboard?from=${today}&to=${today}`);
   const billsRes = useApi(`/bills?date=${today}`);
@@ -87,14 +88,32 @@ export default function EndDay() {
     setBusy(true);
     setError(null);
     try {
-      await api.post('/session/end', { work_date: today, note: note.trim() || null });
-      push('Day ended. Your book is closed for today.', 'success');
+      const res = await api.post('/session/end', { work_date: today, note: note.trim() || null });
+      if (res?.report_email === 'sent') {
+        push('Day ended. The collection report was emailed to the office.', 'success');
+      } else if (res?.report_email === 'failed') {
+        push('Day ended — but emailing the report failed. Share it manually from below.', 'error');
+      } else {
+        push('Day ended. Your book is closed for today.', 'success');
+      }
       reload();
       reloadSession();
     } catch (err) {
       setError(err.offline ? 'You need signal to close the day. Your entries are safe.' : err.message);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const shareReport = async () => {
+    setSharing(true);
+    try {
+      const how = await shareExport('collection', { from: today, to: today }, 'pdf');
+      push(how === 'shared' ? 'Report shared — send it to the office.' : 'PDF downloaded — email or WhatsApp it to the office.', 'success');
+    } catch (err) {
+      push(err.message, 'error');
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -197,7 +216,16 @@ export default function EndDay() {
           Day's collection report
         </SectionTitle>
         <div className="mb-2 flex flex-wrap gap-1.5">
-          <Btn size="sm" variant="secondary" disabled={Boolean(exporting)} onClick={printRegister}>
+          <Btn size="sm" variant="secondary" disabled={Boolean(exporting) || sharing} onClick={shareReport}>
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="18" cy="5" r="3" />
+              <circle cx="6" cy="12" r="3" />
+              <circle cx="18" cy="19" r="3" />
+              <path d="M8.6 10.7l6.8-3.4M8.6 13.3l6.8 3.4" />
+            </svg>
+            Share
+          </Btn>
+          <Btn size="sm" variant="secondary" disabled={Boolean(exporting) || sharing} onClick={printRegister}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M6 9V2h12v7" />
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
@@ -205,10 +233,10 @@ export default function EndDay() {
             </svg>
             Print
           </Btn>
-          <Btn size="sm" variant="secondary" disabled={Boolean(exporting)} onClick={() => runExport('xlsx')}>
+          <Btn size="sm" variant="secondary" disabled={Boolean(exporting) || sharing} onClick={() => runExport('xlsx')}>
             Excel
           </Btn>
-          <Btn size="sm" variant="secondary" disabled={Boolean(exporting)} onClick={() => runExport('pdf')}>
+          <Btn size="sm" variant="secondary" disabled={Boolean(exporting) || sharing} onClick={() => runExport('pdf')}>
             PDF
           </Btn>
         </div>

@@ -54,8 +54,8 @@ export const api = {
   url: (path) => `/api${path}`,
 };
 
-/** Streams an export through the auth header and hands the browser the file. */
-export async function downloadExport(report, params = {}, format = 'xlsx') {
+/** Fetches an export's bytes through the auth header (no save/share yet). */
+async function fetchExportBlob(report, params = {}, format = 'xlsx') {
   const qs = new URLSearchParams({ ...params, format }).toString();
   const res = await fetch(`/api/export/${report}?${qs}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
@@ -69,6 +69,12 @@ export async function downloadExport(report, params = {}, format = 'xlsx') {
   const blob = await res.blob();
   const disp = res.headers.get('content-disposition') || '';
   const filename = /filename="([^"]+)"/.exec(disp)?.[1] || `field-ledger-${report}.${format}`;
+  return { blob, filename };
+}
+
+/** Saves an export through the auth header as a browser download. */
+export async function downloadExport(report, params = {}, format = 'xlsx') {
+  const { blob, filename } = await fetchExportBlob(report, params, format);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -78,6 +84,36 @@ export async function downloadExport(report, params = {}, format = 'xlsx') {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
   return filename;
+}
+
+const FILE_TYPES = {
+  pdf: 'application/pdf',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+
+/**
+ * Shares an export through the system share sheet (WhatsApp, email, …) with
+ * the file attached. Falls back to a plain download where the Web Share API
+ * can't attach files. Returns 'shared' or 'downloaded' so callers can word
+ * their toast.
+ */
+export async function shareExport(report, params = {}, format = 'pdf') {
+  const { blob, filename } = await fetchExportBlob(report, params, format);
+  const file = new File([blob], filename, { type: FILE_TYPES[format] || blob.type });
+  const nav = typeof navigator !== 'undefined' ? navigator : null;
+  if (nav && nav.canShare && nav.share && nav.canShare({ files: [file] })) {
+    await nav.share({ files: [file], title: 'Collection report', text: filename });
+    return 'shared';
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return 'downloaded';
 }
 
 /** Probe used to notice when signal comes back. */

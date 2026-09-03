@@ -7,7 +7,7 @@ import { money, MODE_LABEL, dateLabel } from '../../lib/format.js';
 import {
   Btn, Card, ErrorNote, KeyValue, Loading, Money, Pill, SectionTitle, Sheet, StatusPill,
 } from '../../components/ui.jsx';
-import AttachmentLink from '../../components/AttachmentLink.jsx';
+import AttachmentPhoto from '../../components/AttachmentPhoto.jsx';
 import { FieldHeader } from '../../components/FieldLayout.jsx';
 
 export default function BillDetail() {
@@ -103,9 +103,12 @@ export default function BillDetail() {
                   {c.note && <p className="text-[12px] text-ink-soft">{c.note}</p>}
                   {c.bank && <p className="text-[12px] text-ink-soft">{c.bank}{c.cheque_date ? ` · ${dateLabel(c.cheque_date)}` : ''}</p>}
                   {c.attachment && (
-                    <AttachmentLink name={c.attachment} className="num text-[12px] text-ink-soft underline">
-                      View attachment
-                    </AttachmentLink>
+                    <div className="mt-1.5">
+                      <AttachmentPhoto
+                        name={c.attachment}
+                        alt={`${MODE_LABEL[c.mode] || 'Collection'} photo${c.ref_no ? ` · ${c.ref_no}` : ''}`}
+                      />
+                    </div>
                   )}
                 </div>
                 <p className="num shrink-0 text-[14.5px]">₹{money(c.amount)}</p>

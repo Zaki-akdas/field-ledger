@@ -5,7 +5,7 @@ import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js'
 import {
   Card, ErrorNote, Loading, Money, Pill, SectionTitle, TableWrap, Td, Th, Variance, cx,
 } from '../../components/ui.jsx';
-import AttachmentLink from '../../components/AttachmentLink.jsx';
+import AttachmentPhoto from '../../components/AttachmentPhoto.jsx';
 
 const TONE = { delivered: 'settled', partial: 'attention', pending: 'neutral', cancelled: 'attention' };
 
@@ -103,12 +103,13 @@ export default function SalesmanDetail() {
                 <Td className="num whitespace-nowrap">{c.invoice_no}</Td>
                 <Td>{MODE_LABEL[c.mode]}</Td>
                 <Td className="num whitespace-nowrap text-ink-soft">{c.ref_no || '—'}</Td>
-                <Td className="hidden text-ink-soft xl:table-cell">{c.note || '—'}{c.attachment && (
-                  <>
-                    {' '}
-                    <AttachmentLink name={c.attachment} className="underline">file</AttachmentLink>
-                  </>
-                )}
+                <Td className="hidden text-ink-soft xl:table-cell">
+                  {c.note && <span>{c.note}</span>}
+                  {c.attachment && (
+                    <span className="mt-1 block">
+                      <AttachmentPhoto name={c.attachment} alt={`${MODE_LABEL[c.mode] || 'Collection'} photo ${c.invoice_no || ''}`.trim()} />
+                    </span>
+                  )}
                 </Td>
                 <Td align="right" className="num"><Money value={c.amount} /></Td>
               </tr>

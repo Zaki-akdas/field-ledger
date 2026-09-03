@@ -159,41 +159,52 @@ export async function buildWorkbook({ report, from, to, salesmanId }) {
   }
 
   /* Collection report — per-day invoice-wise register in the CO-SHIP layout:
-   * S.No, invoice no, party and amount, one line per invoice, with a subtotal
-   * under each day and a grand total. Cancelled bills are excluded. */
+   * S.No, invoice no, party, amount, collected and balance (amount minus
+   * shorts and collections), one line per invoice, with a subtotal under each
+   * day and a grand total. Cancelled bills are excluded. */
   if (report === 'collection') {
     const sheet = wb.addWorksheet('Collection Report');
-    sheet.addRow(['Date', 'S.No', 'Invoice No', 'Party', 'Amount']);
+    sheet.addRow(['Date', 'S.No', 'Invoice No', 'Party', 'Amount', 'Collected', 'Balance']);
     const rows = (await billsFor({ from, to, salesmanId })).filter((b) => !b.cancelled_at);
     let sno = 0;
-    let grand = 0;
+    let grandAmount = 0;
+    let grandCollected = 0;
+    let grandBalance = 0;
     let dayDate = null;
-    let dayTotal = 0;
+    let dayAmount = 0;
+    let dayCollected = 0;
+    let dayBalance = 0;
     let dayN = 0;
     const endDay = () => {
       if (dayDate === null) return;
-      sheet.addRow(['', '', 'Day total', `${dayN} ${dayN === 1 ? 'bill' : 'bills'}`, dayTotal]);
+      sheet.addRow(['', '', 'Day total', `${dayN} ${dayN === 1 ? 'bill' : 'bills'}`, dayAmount, dayCollected, dayBalance]);
       const r = sheet.getRow(sheet.rowCount);
       r.font = { bold: true };
-      r.getCell(5).numFmt = MONEY_FMT;
+      [5, 6, 7].forEach((c) => { r.getCell(c).numFmt = MONEY_FMT; });
       dayDate = null;
     };
     for (const b of rows) {
-      if (b.bill_date !== dayDate) { endDay(); dayDate = b.bill_date; dayTotal = 0; dayN = 0; }
+      const collected = round2(Number(b.collected_amount) || 0);
+      const balance = Math.max(0, round2((Number(b.amount) || 0) - (Number(b.short_amount) || 0) - collected));
+      if (b.bill_date !== dayDate) { endDay(); dayDate = b.bill_date; dayAmount = 0; dayCollected = 0; dayBalance = 0; dayN = 0; }
       sno += 1;
-      dayTotal += Number(b.amount || 0);
+      dayAmount += Number(b.amount || 0);
+      dayCollected += collected;
+      dayBalance += balance;
       dayN += 1;
-      grand += Number(b.amount || 0);
-      sheet.addRow([b.bill_date, sno, b.invoice_no, b.shop_name, b.amount]);
+      grandAmount += Number(b.amount || 0);
+      grandCollected += collected;
+      grandBalance += balance;
+      sheet.addRow([b.bill_date, sno, b.invoice_no, b.shop_name, Number(b.amount || 0), collected, balance]);
     }
     endDay();
-    sheet.addRow(['', '', 'Grand total', `${sno} ${sno === 1 ? 'bill' : 'bills'}`, grand]);
+    sheet.addRow(['', '', 'Grand total', `${sno} ${sno === 1 ? 'bill' : 'bills'}`, grandAmount, grandCollected, grandBalance]);
     const gt = sheet.getRow(sheet.rowCount);
     gt.font = { bold: true, size: 12 };
-    gt.getCell(5).numFmt = MONEY_FMT;
+    [5, 6, 7].forEach((c) => { gt.getCell(c).numFmt = MONEY_FMT; });
     styleHeader(sheet);
-    moneyCells(sheet, [5]);
-    autosize(sheet, [13, 8, 22, 36, 16]);
+    moneyCells(sheet, [5, 6, 7]);
+    autosize(sheet, [13, 8, 22, 32, 15, 15, 15]);
     sheet.addRow([]);
     sheet.addRow([`Period: ${from} to ${to} · cancelled bills excluded`]);
   }
@@ -218,12 +229,12 @@ function pdfTable(doc, headers, rows, colWidths) {
     });
     y += 14;
     doc.moveTo(startX, y - 3).lineTo(startX + colWidths.reduce((a, b) => a + b, 0), y - 3)
-      .strokeColor('#DADFE3').lineWidth(0.5).stroke();
+      .strokeColor(bold ? '#182233' : '#DADFE3').lineWidth(bold ? 0.8 : 0.5).stroke();
   };
   drawRow(headers, true);
   for (const row of rows) {
     if (y > doc.page.height - 90) { doc.addPage(); y = doc.y; drawRow(headers, true); }
-    drawRow(row);
+    drawRow(Array.isArray(row) ? row : row.cells, Array.isArray(row) ? false : Boolean(row.bold));
   }
   doc.y = y + 6;
 }
@@ -325,47 +336,55 @@ export async function buildPdf({ report, from, to, salesmanId }) {
       .text(`Cash collected between ${from} and ${to}. Use this sheet to prepare bank deposit bundles.`);
   }
 
-  /* Collection report — invoice-wise per-day register (CO-SHIP layout). */
+  /* Collection report — invoice-wise per-day register (CO-SHIP layout) with
+     amount, collected and balance per line and a bold total under each day
+     and at the foot. Cancelled bills are excluded. */
   if (report === 'collection') {
     doc.font('Helvetica-Bold').fontSize(12).fillColor('#182233').text('Collection Report');
     doc.font('Helvetica').fontSize(8.5).fillColor('#5A6B7B')
-      .text('Invoice-wise register · cancelled bills excluded · amounts in rupees');
+      .text('Invoice-wise register · amount, collected, balance · cancelled bills excluded · amounts in rupees');
     doc.moveDown(0.5);
-    const totalLine = (label, n, amount) => {
-      const y0 = doc.y;
-      doc.font('Helvetica-Bold').fontSize(9.5).fillColor('#182233');
-      doc.text(`${label} (${n} ${n === 1 ? 'bill' : 'bills'})`, 36, y0, { width: 300 })
-        .text(rs(amount), { width: 180, align: 'right' });
-      doc.moveDown(0.5);
-    };
     const rows = (await billsFor({ from, to, salesmanId })).filter((b) => !b.cancelled_at);
     let sno = 0;
-    let grand = 0;
+    let grandAmount = 0;
+    let grandCollected = 0;
+    let grandBalance = 0;
     let dayDate = null;
     const dayRows = [];
+    const dayNums = { amount: 0, collected: 0, balance: 0 };
     const flushDay = async () => {
       if (dayDate === null) return;
-      if (doc.y > doc.page.height - 160) doc.addPage();
+      if (doc.y > doc.page.height - 170) doc.addPage();
       doc.font('Helvetica-Bold').fontSize(10.5).fillColor('#182233')
         .text(`${dayDate} · ${dayRows.length} ${dayRows.length === 1 ? 'bill' : 'bills'}`);
       doc.moveDown(0.3);
-      pdfTable(doc, ['S.No', 'Invoice', 'Party', 'Amount'], dayRows, [42, 120, 205, 90]);
-      totalLine('Day total', dayRows.length, dayRows.reduce((a, r) => a + Number(r[3] ? r[3].replace(/[^\d.]/g, '') : 0), 0));
+      const n = dayRows.length;
+      const totals = { cells: ['', 'Day total', `${n} ${n === 1 ? 'bill' : 'bills'}`, rs(dayNums.amount), rs(dayNums.collected), rs(dayNums.balance)], bold: true };
+      pdfTable(doc, ['S.No', 'Invoice', 'Party', 'Amount', 'Collected', 'Balance'], dayRows.concat([totals]), [38, 95, 138, 84, 84, 84]);
       dayRows.length = 0;
+      dayNums.amount = 0; dayNums.collected = 0; dayNums.balance = 0;
     };
     for (const b of rows) {
+      const collected = round2(Number(b.collected_amount) || 0);
+      const balance = Math.max(0, round2((Number(b.amount) || 0) - (Number(b.short_amount) || 0) - collected));
       if (b.bill_date !== dayDate) {
         await flushDay();
         dayDate = b.bill_date;
         doc.moveDown(0.2);
       }
       sno += 1;
-      grand += Number(b.amount || 0);
-      dayRows.push([sno, b.invoice_no, b.shop_name.slice(0, 30), rs(b.amount)]);
+      grandAmount += Number(b.amount || 0);
+      grandCollected += collected;
+      grandBalance += balance;
+      dayNums.amount += Number(b.amount || 0);
+      dayNums.collected += collected;
+      dayNums.balance += balance;
+      dayRows.push([sno, b.invoice_no, b.shop_name.slice(0, 30), rs(b.amount), rs(collected), rs(balance)]);
     }
     await flushDay();
     doc.moveDown(0.8);
-    totalLine('Grand total', sno, grand);
+    const gt = { cells: ['', 'Grand total', `${sno} ${sno === 1 ? 'bill' : 'bills'}`, rs(grandAmount), rs(grandCollected), rs(grandBalance)], bold: true };
+    pdfTable(doc, ['S.No', 'Invoice', 'Party', 'Amount', 'Collected', 'Balance'], [gt], [38, 95, 138, 84, 84, 84]);
   }
 
   const pageCount = doc.bufferedPageRange().count;

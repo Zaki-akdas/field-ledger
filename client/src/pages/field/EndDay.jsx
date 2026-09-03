@@ -35,14 +35,25 @@ export default function EndDay() {
      invoice number — exactly the rows the Excel/PDF export contains. */
   const register = useMemo(() => {
     const all = billsRes.data?.bills || [];
+    // Balance = amount minus shorts and collections — same expected-based
+    // figure as the office register and the export, so the sheet they print
+    // and the file the office opens agree line by line.
+    const derived = (b) => {
+      const collected = Math.round(Number(b.collected_amount || 0) * 100) / 100;
+      const balance = Math.max(0, Math.round(((Number(b.amount || 0) - Number(b.short_amount || 0)) * 100 - collected * 100)) / 100);
+      return { collected, balance };
+    };
     const rows = all
       .filter((b) => b.status !== 'cancelled')
       .sort(byInvoice)
-      .map((b, i) => ({ ...b, sno: i + 1 }));
+      .map((b, i) => ({ ...b, sno: i + 1, ...derived(b) }));
+    const sum = (f) => rows.reduce((a, b) => a + Number(f(b) || 0), 0);
     return {
       rows,
       count: rows.length,
-      billed: rows.reduce((a, b) => a + Number(b.amount || 0), 0),
+      billed: sum((b) => b.amount),
+      collected: sum((b) => b.collected),
+      balance: sum((b) => b.balance),
       cancelled: all.length - rows.length,
     };
   }, [billsRes.data]);
@@ -104,13 +115,15 @@ export default function EndDay() {
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[380px] text-[13px]">
+        <table className="w-full min-w-[520px] text-[13px]">
           <thead>
             <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-ink-faint">
               <th className="w-12 py-2.5 pl-3.5 pr-2 font-semibold">S.No</th>
               <th className="py-2.5 px-2 font-semibold">Invoice</th>
               <th className="py-2.5 px-2 font-semibold">Party</th>
-              <th className="py-2.5 pl-2 pr-3.5 text-right font-semibold">Amount</th>
+              <th className="py-2.5 px-2 text-right font-semibold">Amount</th>
+              <th className="py-2.5 px-2 text-right font-semibold">Collected</th>
+              <th className="py-2.5 pl-2 pr-3.5 text-right font-semibold">Balance</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
@@ -120,6 +133,8 @@ export default function EndDay() {
                 <td className="num whitespace-nowrap py-2.5 px-2">{b.invoice_no}</td>
                 <td className="max-w-[160px] truncate py-2.5 px-2">{b.shop_name}</td>
                 <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right">₹{money(b.amount)}</td>
+                <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right">₹{money(b.collected)}</td>
+                <td className={`num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right ${b.balance > 0.5 ? 'font-medium text-attention' : 'text-ink-faint'}`}>₹{money(b.balance)}</td>
               </tr>
             ))}
           </tbody>
@@ -130,6 +145,12 @@ export default function EndDay() {
               </td>
               <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right text-[13.5px] font-semibold">
                 ₹{money(register.billed)}
+              </td>
+              <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right text-[13.5px] font-semibold">
+                ₹{money(register.collected)}
+              </td>
+              <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right text-[13.5px] font-semibold">
+                ₹{money(register.balance)}
               </td>
             </tr>
           </tfoot>

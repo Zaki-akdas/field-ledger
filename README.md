@@ -125,9 +125,13 @@ half-succeeded request can never double-collect a payment. The queue is visible 
 Environment variables: `DATABASE_URL` (required), `DATABASE_SSL=false` (disable TLS for a local
 Postgres), `PORT`, `CORS_ORIGINS` (comma-separated, production), `PGPOOL_MAX` (DB pool size).
 
-**Connection model:** the app connects through a shared pool — there is **no per-request database
-session**. RLS context is applied per-transaction inside writes (`tx()`), which is the pattern the
-Supabase **transaction-mode pooler** supports: point `DATABASE_URL` at the pooler on **port 6543**
+**Connection model:** the app connects through a shared pool, and each HTTP request runs inside
+**one database transaction** that is opened lazily on the first query and committed when the response
+finishes. The RLS session variables (`app.current_user_id`, `app.current_user_role`) are set with
+`set_config(…, is_local)` at the start of that transaction, so **reads and writes both carry RLS
+context** — the app stays correct even if `DATABASE_URL` ever connects as a non-owner role (today it
+connects as the table owner, which bypasses RLS). This is exactly the pattern Supabase's
+**transaction-mode pooler** supports: point `DATABASE_URL` at the pooler on **port 6543**
 (`postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`) so concurrent
 requests share a few backends instead of exhausting the 15-session cap of port 5432. The realtime
 `LISTEN` listener needs a long-lived session, so it uses `REALTIME_DATABASE_URL` when set (the

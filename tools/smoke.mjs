@@ -54,6 +54,19 @@ vc.on('warn', (...a) => {
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const text = (dom) => dom.window.document.body.textContent.replace(/\s+/g, ' ').trim();
 
+// The remote Supabase demo DB answers each query in ~100-150ms, so a page that
+// runs a dozen sequential queries can take seconds. Poll for the expected
+// content instead of betting on a fixed sleep.
+async function waitForText(dom, needle, ms = 25000) {
+  const t0 = Date.now();
+  for (;;) {
+    const body = text(dom);
+    if (body.includes(needle)) return true;
+    if (Date.now() - t0 > ms) return false;
+    await wait(400);
+  }
+}
+
 async function boot(pathname = '/') {
   const dom = await JSDOM.fromURL(`http://127.0.0.1:${PORT}${pathname}`, {
     runScripts: 'dangerously',
@@ -84,7 +97,7 @@ async function login(dom, code, password) {
   await wait(120);
   doc.querySelector('form').dispatchEvent(new dom.window.Event('submit', { bubbles: true, cancelable: true }));
   // Reconciliation over a remote database is ~30 sequential queries; be patient.
-  await wait(4500);
+  await wait(9000);
 }
 
 async function click(dom, needle, tag = 'a,button') {
@@ -94,7 +107,7 @@ async function click(dom, needle, tag = 'a,button') {
     || all.find((e) => norm(e).includes(needle.toLowerCase()));
   if (!el) throw new Error(`Nothing clickable containing "${needle}"`);
   el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, view: dom.window }));
-  await wait(2600);
+  await wait(3600);
 }
 
 const results = [];
@@ -127,17 +140,17 @@ async function run() {
     ['Upload bills', 'dispatch sheet'],
   ]) {
     await click(admin, label);
+    const ok = await waitForText(admin, needle);
     const body = text(admin);
-    check(`Admin → ${label}`, body.includes(needle), body.slice(0, 60));
+    check(`Admin → ${label}`, ok, ok ? '' : body.slice(0, 60));
   }
 
   await click(admin, 'Salesmen');
   const row = [...admin.window.document.querySelectorAll('tbody tr')][0];
   if (row) {
     row.dispatchEvent(new admin.window.MouseEvent('click', { bubbles: true, cancelable: true, view: admin.window }));
-    await wait(3600);
-    const body = text(admin);
-    check('Admin → salesman drill-down', /Collection entries/.test(body), body.slice(0, 80));
+    const ok = await waitForText(admin, 'Collection entries');
+    check('Admin → salesman drill-down', ok, ok ? '' : text(admin).slice(0, 80));
   }
 
   /* --------------------------------------------------------- field side --- */

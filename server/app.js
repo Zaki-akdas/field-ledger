@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readFile, verifySignedUpload } from './storage.js';
+import { requestStore, finalizeRequest } from './db.js';
 import { attachUser, resolveUser } from './auth.js';
 import { router as authRouter } from './routes/auth.js';
 import { router as fieldRouter } from './routes/field.js';
@@ -68,11 +69,21 @@ app.use(express.urlencoded({ extended: true }));
 app.use(attachUser);
 app.use(resolveUser);
 
-// No per-request database session. Requests share the pool (db.js), which
-// connects through the transaction-mode pooler; RLS context is applied
-// per-transaction inside tx() for writes, and reads are authorized at the
-// route layer. This is what keeps concurrent requests from pinning
-// sessions and exhausting Supabase's connection budget.
+// One transaction per request, RLS context included. The scope opens lazily
+// on the first database query and every later read or write rides the same
+// client with the same actor, so Row Level Security applies to reads as well
+// as writes — correct even if DATABASE_URL ever connects as a non-owner role
+// (the owner role bypasses RLS today). The transaction commits when the
+// response finishes and rolls back on an error or a dropped connection.
+// Requests share the pool through the transaction-mode pooler, so no request
+// pins a session between requests and concurrency stays healthy.
+app.use((req, res, next) => {
+  requestStore.run({ user: req.user || null, client: null, begin: null, done: false, rollback: false }, () => {
+    res.on('finish', () => { finalizeRequest().catch(() => {}); });
+    res.on('close', () => { finalizeRequest(true).catch(() => {}); });
+    next();
+  });
+});
 
 // ── Routes ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
@@ -117,6 +128,10 @@ app.use('/api', (req, res) => res.status(404).json({ error: `No endpoint for ${r
 // ── Global error handler ───────────────────────────────────────────────
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
+  // The request-scope transaction (see above) must roll back, not commit,
+  // when the handler failed. finalizeRequest() picks this up on 'finish'.
+  const reqCtx = requestStore.getStore();
+  if (reqCtx) reqCtx.rollback = true;
   if (err?.code === 'LIMIT_FILE_SIZE') {
     return res.status(413).json({ error: 'That file is larger than 12 MB. Compress it and upload again.' });
   }

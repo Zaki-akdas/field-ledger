@@ -4,6 +4,7 @@
  * but every function is now async.
  */
 import pg from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const { Pool } = pg;
 
@@ -16,15 +17,17 @@ export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
   // DATABASE_URL points at Supabase's transaction-mode pooler (port 6543),
-  // which multiplexes many client connections over a few backends. There is
-  // no per-session cap and no backend is pinned while a client idles, so a
-  // shared pool can serve any number of concurrent requests. Each instance
-  // still keeps its pool modest; PGPOOL_MAX overrides, Vercel stays tiny.
-  max: Math.min(25, Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 3 : 12))),
+  // which multiplexes many client connections over a few backends — no
+  // per-session cap and no backend pinned while a client idles. Each request
+  // now rides one transaction (RLS context + consistent reads) held for the
+  // duration of that request, so the pool must fit the concurrent requests
+  // themselves rather than just individual queries. PGPOOL_MAX overrides;
+  // Vercel stays small because it can still serve modest concurrency.
+  max: Math.min(25, Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 3 : 20))),
   idleTimeoutMillis: 30000,
-  // Fail fast when the database is unreachable instead of hanging until the
-  // platform kills the request.
-  connectionTimeoutMillis: 8000,
+  // Generous so a burst of concurrent requests queues on the pool instead of
+  // failing while an earlier request's transaction is still finishing.
+  connectionTimeoutMillis: 20000,
   query_timeout: 15000,
   statement_timeout: 15000,
 });
@@ -33,13 +36,82 @@ pool.on('error', (err) => {
   console.error('[pg] unexpected pool error:', err);
 });
 
+/* ---------------------------------------------------------------- request scope --- */
+
+/**
+ * Per-request database scope. The request middleware (app.js) runs each
+ * request inside this store with { user }. The first q/q1/qx/tx call opens
+ * one transaction for the whole request and sets the RLS session variables
+ * transaction-locally; every later query — read or write — reuses that same
+ * client, so Row Level Security sees the same actor for the entire request
+ * and never leaks context to another request on the same pooled backend.
+ * The middleware commits (or rolls back) when the response finishes.
+ */
+export const requestStore = new AsyncLocalStorage();
+
+async function setRlsContext(client, user) {
+  if (!user) return;
+  await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [String(user.id)]);
+  await client.query(`SELECT set_config('app.current_user_role', $1, true)`, [user.role || '']);
+}
+
+/**
+ * Resolve the client this request's queries should run on, opening the
+ * request transaction lazily on first database access. Returns null when
+ * there is no request scope or no actor (pre-auth work, boot scripts).
+ */
+async function ensureRequestClient(user = null) {
+  const ctx = requestStore.getStore();
+  if (!ctx) return null;
+  if (ctx.client) return ctx.client;
+  const actor = user || ctx.user || null;
+  if (!actor) return null;
+  if (!ctx.begin) {
+    ctx.begin = (async () => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await setRlsContext(client, actor);
+      } catch (err) {
+        client.release();
+        ctx.begin = null;
+        throw err;
+      }
+      ctx.client = client;
+    })();
+  }
+  await ctx.begin;
+  return ctx.client;
+}
+
+/**
+ * Finish the request transaction. Called by the request middleware when the
+ * response finishes (commit) or is aborted / errored (rollback). Standalone
+ * transactions (outside a request scope) are unaffected.
+ */
+export async function finalizeRequest(forceRollback = false) {
+  const ctx = requestStore.getStore();
+  if (!ctx || ctx.done) return;
+  ctx.done = true;
+  const client = ctx.client;
+  ctx.client = null;
+  if (!client) return;
+  try {
+    await client.query(forceRollback || ctx.rollback ? 'ROLLBACK' : 'COMMIT');
+  } catch {
+    try { await client.query('ROLLBACK'); } catch { /* connection already gone */ }
+  } finally {
+    client.release();
+  }
+}
+
 /* ---------------------------------------------------------------- helpers --- */
 
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
-/** Convenience: run a query and return rows. */
+/** Convenience: run a query and return rows. Runs on the request transaction. */
 export async function q(sql, params = [], client = null) {
-  const target = client || pool;
+  const target = client || (await ensureRequestClient()) || pool;
   const { rows } = await target.query(sql, params);
   return rows;
 }
@@ -52,38 +124,45 @@ export async function q1(sql, params = [], client = null) {
 
 /** Convenience: run an INSERT/UPDATE/DELETE and return the result. */
 export async function qx(sql, params = [], client = null) {
-  const target = client || pool;
+  const target = client || (await ensureRequestClient()) || pool;
   return target.query(sql, params);
 }
 
 /**
- * Run a set of queries inside one PostgreSQL transaction with RLS context.
+ * Run fn inside one PostgreSQL transaction with RLS context, set with
+ * set_config(…, is_local) so it can never leak to another client through the
+ * transaction-mode pooler.
  *
- * This is the only place RLS session variables are set, and they are set
- * transaction-locally (set_config is_local). That is deliberate: through the
- * transaction-mode pooler a backend can be reassigned to another client the
- * moment COMMIT runs, so context cannot outlive the transaction — which is
- * exactly what makes this safe under heavy concurrency.
+ * Inside a request scope this joins the request's own transaction — the RLS
+ * context set once at first access is reused and the work commits or rolls
+ * back as one unit when the response finishes. Outside a request scope
+ * (scripts, tools, tests) it opens, commits and releases its own client.
  *
  * Usage: await tx(async (client) => { ... }, req.user)
  */
-export async function tx(fn, user = null) {
+async function standaloneTx(fn, user) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    if (user) {
-      await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [String(user.id)]);
-      await client.query(`SELECT set_config('app.current_user_role', $1, true)`, [user.role || '']);
-    }
+    await setRlsContext(client, user);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch { /* already gone */ }
     throw err;
   } finally {
     client.release();
   }
+}
+
+export async function tx(fn, user = null) {
+  const ctx = requestStore.getStore();
+  if (ctx && (ctx.user || user)) {
+    const client = await ensureRequestClient(user);
+    if (client) return fn(client);
+  }
+  return standaloneTx(fn, user);
 }
 
 /* --------------------------------------------------------------- queries --- */

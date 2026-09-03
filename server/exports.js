@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
-import { pool, reconcile, cashRollup, round2 } from './db.js';
+import { q, reconcile, cashRollup, round2 } from './db.js';
 import { todayISO, isoDaysAgo } from './dates.js';
 
 const MONEY_FMT = '₹#,##,##0.00';
@@ -16,7 +16,7 @@ export function range(req) {
 async function billsFor({ from, to, salesmanId }) {
   const params = salesmanId ? [from, to, salesmanId] : [from, to];
   const where = salesmanId ? 'AND b.salesman_id = $3' : '';
-  const { rows } = await pool.query(`
+  return q(`
     SELECT b.invoice_no, b.bill_date, b.amount, s.name AS shop_name, s.area AS shop_area,
            u.name AS salesman_name, u.code AS salesman_code,
            COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) AS collected_amount,
@@ -25,14 +25,12 @@ async function billsFor({ from, to, salesmanId }) {
     FROM bills b JOIN shops s ON s.id = b.shop_id JOIN users u ON u.id = b.salesman_id
     WHERE b.bill_date BETWEEN $1 AND $2 ${where}
     ORDER BY b.bill_date, b.invoice_no`, params);
-  return rows;
 }
 
 async function people({ salesmanId }) {
   const params = salesmanId ? [salesmanId] : [];
   const where = salesmanId ? 'AND id = $1' : '';
-  const { rows } = await pool.query(`SELECT id, code, name FROM users WHERE role = 'salesman' AND active = 1 ${where} ORDER BY code`, params);
-  return rows;
+  return q(`SELECT id, code, name FROM users WHERE role = 'salesman' AND active = 1 ${where} ORDER BY code`, params);
 }
 
 /* ------------------------------------------------------------- workbook --- */
@@ -115,7 +113,7 @@ export async function buildWorkbook({ report, from, to, salesmanId }) {
     sheet.addRow(['Date', 'Invoice No', 'Shop', 'Salesman', 'Amount', 'Reason']);
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND c.salesman_id = $3' : '';
-    const { rows } = await pool.query(`
+    const rows = await q(`
       SELECT c.cancel_date, c.invoice_no, c.amount, c.reason, s.name AS shop_name, u.name AS salesman_name, u.code AS salesman_code
       FROM cancellations c JOIN bills b ON b.id = c.bill_id JOIN shops s ON s.id = b.shop_id JOIN users u ON u.id = c.salesman_id
       WHERE c.cancel_date BETWEEN $1 AND $2 ${where}
@@ -131,7 +129,7 @@ export async function buildWorkbook({ report, from, to, salesmanId }) {
     sheet.addRow(['Date', 'Invoice No', 'Shop', 'Salesman', 'Product', 'Qty', 'Rate', 'Amount', 'Reason']);
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND si.salesman_id = $3' : '';
-    const { rows } = await pool.query(`
+    const rows = await q(`
       SELECT si.short_date, si.product, si.qty, si.rate, si.amount, si.reason, b.invoice_no, s.name AS shop_name,
              u.name AS salesman_name, u.code AS salesman_code
       FROM short_items si JOIN bills b ON b.id = si.bill_id JOIN shops s ON s.id = b.shop_id JOIN users u ON u.id = si.salesman_id
@@ -294,7 +292,7 @@ export async function buildPdf({ report, from, to, salesmanId }) {
   if (report === 'cancellations') {
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND c.salesman_id = $3' : '';
-    const { rows } = await pool.query(`
+    const rows = await q(`
       SELECT c.cancel_date, c.invoice_no, c.amount, c.reason, s.name AS shop_name, u.code AS salesman_code
       FROM cancellations c JOIN bills b ON b.id = c.bill_id JOIN shops s ON s.id = b.shop_id JOIN users u ON u.id = c.salesman_id
       WHERE c.cancel_date BETWEEN $1 AND $2 ${where}
@@ -307,7 +305,7 @@ export async function buildPdf({ report, from, to, salesmanId }) {
   if (report === 'shortages') {
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND si.salesman_id = $3' : '';
-    const { rows } = await pool.query(`
+    const rows = await q(`
       SELECT si.short_date, si.product, si.qty, si.amount, si.reason, b.invoice_no, u.code AS salesman_code
       FROM short_items si JOIN bills b ON b.id = si.bill_id JOIN users u ON u.id = si.salesman_id
       WHERE si.short_date BETWEEN $1 AND $2 ${where}

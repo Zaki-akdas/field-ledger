@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { pool, round2, billRow } from './db.js';
+import { q1, round2, billRow } from './db.js';
 import { createBill } from './mutations.js';
 
 const FIELDS = [
@@ -84,8 +84,7 @@ export async function parseBillWorkbook(filePath, { salesmanId, billDate, file }
   const bills = [];
   let created = 0;
 
-  const { rows: userRows } = await pool.query('SELECT id, code, name, role FROM users WHERE id = $1', [salesmanId]);
-  const user = userRows[0];
+  const user = await q1('SELECT id, code, name, role FROM users WHERE id = $1', [salesmanId]);
   if (!user) {
     const err = new Error('Salesman not found for this upload.');
     err.status = 400;

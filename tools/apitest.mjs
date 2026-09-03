@@ -5,6 +5,7 @@
  *   node tools/apitest.mjs          (needs the API running on :4000)
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:4000/api';
+const ROOT = BASE.replace(/\/api$/, '');
 import { isoDaysAgo } from '../server/dates.js';
 
 // Seed generates 10 days of bills ending today; test against the trailing week
@@ -163,10 +164,59 @@ async function main() {
       `xlsx ${x.data.byteLength ?? 0}B pdf ${p.data.byteLength ?? 0}B`);
   }
 
+  /* --------------------------------------------- attachments --- */
+  // Attachment storage round trip: upload, fetch back, and an offline
+  // (data-URL) photo materialised into a collection. Works against local
+  // disk (no storage keys) or Supabase Storage; files are cleaned below.
+  const storedFiles = [];
+
+  const photo = new FormData();
+  photo.append('file', new Blob(['fake-photo-bytes'], { type: 'image/png' }), 'photo.png');
+  const att = await call('POST', '/attachments', { token: S, form: photo });
+
+  check('Photo upload stores an attachment', att.status === 200 && att.data?.path, JSON.stringify(att.data));
+  if (att.status === 200) storedFiles.push(att.data.path);
+
+  // /uploads/* is a root route (served by the app), not under /api.
+  const fetched = await fetch(`${ROOT}/uploads/${att.data?.path}`);
+  const fetchedBytes = Buffer.from(await fetched.arrayBuffer());
+  check('Attachment downloads back with bytes', fetched.status === 200 && fetchedBytes.byteLength > 0, `${fetchedBytes.byteLength}B`);
+  check('Attachment served with its content type', /image\/png/.test(fetched.headers.get('content-type') || ''));
+
+  const missing = await fetch(`${ROOT}/uploads/does-not-exist-123.png`);
+  check('Unknown attachment is a 404', missing.status === 404, String(missing.status));
+
+  const target = (await call('GET', `/bills?q=${encodeURIComponent(testInvoice)}`, { token: S })).data.bills[0];
+  if (target) {
+    const photoPay = Math.min(400, Math.round(target.expected_amount / 2));
+    const off = await call('POST', '/collections', {
+      token: S,
+      body: {
+        bill_id: target.id,
+        client_id: `test-photo-${Date.now()}`,
+        entries: [{
+          mode: 'online', amount: photoPay, ref_no: 'UTR-TEST-ATTACH',
+          attachment_data: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        }],
+      },
+    });
+    check('Offline photo materialises into a collection', off.status === 201, off.data?.error || '');
+    const detail = (await call('GET', `/bills/${target.id}`, { token: S })).data;
+    const name = detail.collections?.find((c) => c.ref_no === 'UTR-TEST-ATTACH')?.attachment;
+    check('Collection carries the stored attachment name', Boolean(name), String(name));
+    if (name) {
+      const dl = await fetch(`${ROOT}/uploads/${name}`);
+      const dlBytes = Buffer.from(await dl.arrayBuffer());
+      check('Materialised photo downloads', dl.status === 200 && dlBytes.byteLength > 0);
+      storedFiles.push(name);
+    }
+  }
+
   /* ------------------------------------------------------- cleanup --- */
   // Leave the demo ledger as we found it: drop this run's test rows.
   // Runs as the table owner so Row Level Security is bypassed.
   const { tx } = await import('../server/db.js');
+  const { deleteFile } = await import('../server/storage.js');
   const removed = await tx(async (client) => {
     const { rows: bills } = await client.query("SELECT id FROM bills WHERE invoice_no LIKE 'INV/TEST/%'");
     await client.query("DELETE FROM collections WHERE client_id LIKE 'test-%'");
@@ -178,7 +228,8 @@ async function main() {
     }
     return bills.length;
   });
-  console.log(`\n(cleaned up ${removed} test bill${removed === 1 ? '' : 's'})`);
+  for (const name of storedFiles) await deleteFile(name);
+  console.log(`\n(cleaned up ${removed} test bill${removed === 1 ? '' : 's'} + ${storedFiles.length} attachment${storedFiles.length === 1 ? '' : 's'})`);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   if (fail) { console.log('Failed: ' + failures.join(', ')); process.exit(1); }

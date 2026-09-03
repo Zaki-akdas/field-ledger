@@ -5,6 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getRequestClient, releaseClient } from './db.js';
+import { readFile } from './storage.js';
 import { attachUser, resolveUser } from './auth.js';
 import { router as authRouter } from './routes/auth.js';
 import { router as fieldRouter } from './routes/field.js';
@@ -86,10 +87,21 @@ app.use('/api/admin', apiLimiter, adminRouter);
 app.use('/api/sync', apiLimiter, syncRouter);
 app.use('/api/export', apiLimiter, exportRouter);
 
-// ── Static files (local / VPS serving; Vercel serves the SPA itself) ──
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
+// ── Attachments — streamed from storage (Supabase Storage or local disk) ──
+// One route for every host: names stay opaque, bytes never live on the
+// server's own disk in serverless mode.
+app.get('/uploads/:file', async (req, res) => {
+  try {
+    const file = await readFile(req.params.file);
+    if (!file) return res.status(404).type('text/plain').send('Attachment not found.');
+    res.set('Content-Type', file.contentType);
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.end(file.data);
+  } catch (err) {
+    console.error('[uploads] read failed:', err.message);
+    res.status(500).type('text/plain').send('Could not read that attachment.');
+  }
+});
 
 const dist = path.join(__dirname, '..', 'client', 'dist');
 if (fs.existsSync(dist)) {

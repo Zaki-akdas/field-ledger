@@ -1,8 +1,11 @@
 import { Router } from 'express';
+import path from 'node:path';
+import fs from 'node:fs';
 import { billRows, billRow, reconcile, round2, q1, qx, pool } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { todayISO } from '../dates.js';
-import { upload } from '../uploads.js';
+import { upload, photoUpload } from '../uploads.js';
+import { saveFile } from '../storage.js';
 import { parseBillWorkbook } from '../import.js';
 import { createBill, recordCollection, cancelBill, uncancelBill, addShortItems, HttpError } from '../mutations.js';
 
@@ -57,18 +60,29 @@ router.post('/bills', handle(async (req, res) => {
 router.post('/bills/upload', upload.single('file'), handle(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose an Excel file to upload.' });
   const ownerId = req.user.role === 'admin' && req.body.salesman_id ? Number(req.body.salesman_id) : req.user.id;
-  const result = await parseBillWorkbook(req.file.path, {
-    salesmanId: ownerId,
-    billDate: req.body.bill_date || todayISO(),
-    file: req.file.filename,
-  });
-  res.json(result);
+  try {
+    const result = await parseBillWorkbook(req.file.path, {
+      salesmanId: ownerId,
+      billDate: req.body.bill_date || todayISO(),
+      file: req.file.filename,
+    });
+    res.json(result);
+  } finally {
+    // The workbook is parsed and no longer needed — never leave temp files.
+    fs.unlink(req.file.path, () => {});
+  }
 }));
 
-router.post('/attachments', upload.single('file'), (req, res) => {
+router.post('/attachments', photoUpload.single('file'), handle(async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file received. Try again.' });
-  res.json({ path: req.file.filename, original: req.file.originalname });
-});
+  const name = await saveFile({
+    data: req.file.buffer,
+    contentType: req.file.mimetype || 'application/octet-stream',
+    ext: path.extname(req.file.originalname || ''),
+  });
+  if (!name) return res.status(500).json({ error: 'Could not store that photo right now. Try again.' });
+  res.json({ path: name, original: req.file.originalname });
+}));
 
 /* ---------------------------------------------------------- field writes --- */
 

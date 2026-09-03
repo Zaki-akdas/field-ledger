@@ -118,12 +118,17 @@ half-succeeded request can never double-collect a payment. The queue is visible 
 | Database | Supabase PostgreSQL via `pg` (`server/schema.sql`) |
 | Realtime | PostgreSQL `LISTEN/NOTIFY` triggers → SSE endpoint (`/api/realtime`) |
 | Security | Row-level security policies + per-request DB session context, scrypt hashes |
-| Uploads | multer → `server/uploads/`, parsed with ExcelJS |
+| Uploads | multer → Supabase Storage (`server/storage.js`), workbooks parsed with ExcelJS |
 | Exports | ExcelJS (`.xlsx`), PDFKit (`.pdf`) |
 | Auth | Login code + scrypt password hash, random session token in `Authorization: Bearer` |
 
 Environment variables: `DATABASE_URL` (required), `DATABASE_SSL=false` (disable TLS for a local
 Postgres), `PORT`, `CORS_ORIGINS` (comma-separated, production), `PGPOOL_MAX` (DB pool size).
+
+Attachment storage: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` store invoice photos and
+collection screenshots in a private Supabase Storage bucket (default name `field-ledger`,
+override with `SUPABASE_STORAGE_BUCKET`). Without those keys files fall back to `server/uploads/`
+on disk — fine for dev and a single VPS, but not serverless.
 
 ---
 
@@ -138,16 +143,20 @@ Express app exported from `api/index.js` (serverless function). Push to `main` �
 1. Create a project on Vercel for this repo. Framework preset **Vite**, build command
    `npm run build`, output directory **client/dist**.
 2. Add the production environment variables in Vercel: `DATABASE_URL` (your Supabase connection
-   string), `PGPOOL_MAX=3` (serverless instances share the DB connection cap).
+   string), `PGPOOL_MAX=3` (serverless instances share the DB connection cap), and the storage
+   keys `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` so photo uploads survive cold starts.
 3. Create a token: `vercel login && vercel tokens create`.
 4. Get the IDs: `vercel whoami` (username), then `vercel project inspect <name>` — note the
    **org id** (`org.id`) and **project id** (`id`).
 5. Add repo secrets so the workflow can deploy: `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
    `VERCEL_PROJECT_ID`.
 
-**Serverless caveats:** uploads land on the function's ephemeral disk (point attachments at
-Supabase Storage for durability), and the realtime SSE listener is disabled when `VERCEL` is set —
-Realtime runs on the Node/VPS host.
+**Serverless caveats:** with the storage keys set, attachments live in Supabase Storage and are
+streamed back through `/uploads/*` — nothing is written to the function's ephemeral disk. The
+realtime SSE listener is disabled when `VERCEL` is set — Realtime runs on the Node/VPS host.
+
+Photos uploaded before the keys were added remain in `server/uploads/`; the `/uploads/*` route
+still serves them from disk.
 
 ---
 
@@ -179,8 +188,9 @@ tools/
 npm run verify        # build → class check → UI smoke (the one to run before shipping)
 npm run smoke         # 25 UI checks: login, every admin screen, drill-down, field flow,
                       #   collect screen, three-tab nav, end-day screen
-npm run apitest       # 33 API checks: reconciliation identity, every validation rule,
-                      #   offline replay idempotency, imports, exports (needs the API running)
+npm run apitest       # API regression: reconciliation identity, every validation rule,
+                      #   offline replay idempotency, imports, exports, attachment
+                      #   storage round-trip (needs the API running + DATABASE_URL)
 npm run check:classes # every Tailwind class used in the source exists in the built CSS
 ```
 

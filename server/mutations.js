@@ -4,6 +4,7 @@
 import { billRow, round2, q1, qx, tx } from './db.js';
 import { todayISO } from './dates.js';
 import { saveDataUrl } from './attachments.js';
+import { deleteFile } from './storage.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -59,13 +60,27 @@ export async function createBill({ payload = {}, user }) {
   }
 
   const source = (payload.attachment || payload.attachment_data) ? 'photo' : 'manual';
-  const attachment = payload.attachment || saveDataUrl(payload.attachment_data) || null;
+  // Online uploads arrive as an already-stored name; offline data URLs are
+  // materialised now (Supabase Storage or disk). If the insert fails we remove
+  // the file we just created so nothing is orphaned.
+  let attachment = payload.attachment || null;
+  let storedFile = null;
+  if (!attachment && payload.attachment_data) {
+    storedFile = await saveDataUrl(payload.attachment_data);
+    attachment = storedFile;
+  }
 
-  const r = await qx(
-    `INSERT INTO bills (invoice_no, shop_id, salesman_id, amount, bill_date, source, attachment, client_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-    [invoiceNo, shopId, ownerId, round2(amt), date, source, attachment, clientId],
-  );
+  let r;
+  try {
+    r = await qx(
+      `INSERT INTO bills (invoice_no, shop_id, salesman_id, amount, bill_date, source, attachment, client_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [invoiceNo, shopId, ownerId, round2(amt), date, source, attachment, clientId],
+    );
+  } catch (err) {
+    if (storedFile) await deleteFile(storedFile);
+    throw err;
+  }
 
   return { bill: await billRow(r.rows[0].id) };
 }
@@ -131,8 +146,25 @@ export async function recordCollection({ payload = {}, user }) {
 
   const date = payload.collection_date || todayISO();
 
+  // Materialise offline data-URL photos before the transaction so storage
+  // writes never sit inside it; if the transaction rolls back we delete them.
+  const attached = [];
+  const storedByIndex = [];
+  for (let i = 0; i < clean.length; i++) {
+    const e = clean[i];
+    if (e.attachment) { attached.push(e.attachment); continue; }
+    if (e.attachment_data) {
+      const name = await saveDataUrl(e.attachment_data);
+      attached.push(name);
+      if (name) storedByIndex.push(i);
+    } else {
+      attached.push(null);
+    }
+  }
+
   await tx(async (client) => {
-    for (const e of clean) {
+    for (let i = 0; i < clean.length; i++) {
+      const e = clean[i];
       const r = await client.query(
         `INSERT INTO collections
           (bill_id, salesman_id, mode, amount, ref_no, bank, cheque_date, note, attachment, collection_date, client_id)
@@ -143,7 +175,7 @@ export async function recordCollection({ payload = {}, user }) {
           e.bank ? String(e.bank).trim() : null,
           e.cheque_date || null,
           e.note ? String(e.note).trim() : null,
-          e.attachment || saveDataUrl(e.attachment_data) || null,
+          attached[i],
           date,
           cid ? `${cid}:${e.mode}` : null,
         ],
@@ -160,7 +192,12 @@ export async function recordCollection({ payload = {}, user }) {
         }
       }
     }
-  }, user);
+  }, user).catch(async (err) => {
+    for (const i of storedByIndex) {
+      if (attached[i]) await deleteFile(attached[i]);
+    }
+    throw err;
+  });
 
   return { bill: await billRow(bill.id), collected: total };
 }

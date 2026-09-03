@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApi, useTitle, useDarkMode } from '../../lib/hooks.js';
 import { useAuth, useSync } from '../../lib/context.jsx';
-import { todayISO, shiftISO, MODE_LABEL, rupees } from '../../lib/format.js';
+import { todayISO, shiftISO, MODE_LABEL, rupees, dateLabel } from '../../lib/format.js';
 import {
   Btn, Card, ErrorNote, Loading, SectionTitle, Segmented, Variance,
 } from '../../components/ui.jsx';
@@ -41,6 +41,28 @@ export default function Me() {
   const today = todayISO();
   const from = shiftISO(today, -Number(days));
   const { data, loading, error } = useApi(`/me/dashboard?from=${from}&to=${today}`);
+
+  // Full bill list for the same range — drives the overall summary card and
+  // the bill-wise statement (invoice rows + grand total, report style).
+  const billsRes = useApi(`/bills?from=${from}&to=${today}`);
+  const billRows = useMemo(
+    () => (billsRes.data?.bills || []).filter((b) => b.status !== 'cancelled'),
+    [billsRes.data],
+  );
+  const summary = useMemo(() => {
+    const open = billRows.filter((b) => b.status === 'pending' || b.status === 'partial');
+    return {
+      count: billRows.length,
+      billed: billRows.reduce((a, b) => a + Number(b.amount || 0), 0),
+      collected: billRows.reduce((a, b) => a + Number(b.collected_amount || 0), 0),
+      outstanding: open.reduce((a, b) => a + Number(b.balance || 0), 0),
+      open: open.length,
+      cancelled: (billsRes.data?.bills || []).filter((b) => b.status === 'cancelled').length,
+    };
+  }, [billRows, billsRes.data]);
+
+  const rangeLabel = (RANGES.find((r) => r.value === days) || {}).label.toLowerCase();
+  const periodLabel = days === '0' ? dateLabel(today) : `${dateLabel(from)} – ${dateLabel(today)}`;
   const session = useApi('/session/today');
   const { online, queue } = useSync();
   const { logout } = useAuth();
@@ -61,7 +83,9 @@ export default function Me() {
 
       <Segmented className="mb-4" value={days} onChange={setDays} options={RANGES} />
 
-      {loading ? <Loading label="Adding up…" /> : error ? <ErrorNote>{error.message}</ErrorNote> : data && (
+      {loading || billsRes.loading ? <Loading label="Adding up…" /> : (error || billsRes.error) ? (
+        <ErrorNote>{(error || billsRes.error).message}</ErrorNote>
+      ) : data && (
         <>
           <Card className="p-4">
             <div className="flex items-end justify-between">
@@ -85,6 +109,81 @@ export default function Me() {
             <Stat label="Pending" value={data.pending.count} tone={data.pending.count ? 'text-attention' : ''} hint={`${rupees(data.pending.amount)} outstanding`} />
             <Stat label="Cancelled" value={data.cancelled.count} tone={data.cancelled.count ? 'text-attention' : ''} hint={`${rupees(data.cancelled.amount)} off the book`} />
             <Stat label="Short items" value={rupees(data.short.amount)} tone={data.short.amount ? 'text-attention' : ''} hint={`${data.short.count} ${data.short.count === 1 ? 'line' : 'lines'}`} />
+          </div>
+
+          {/* Overall billed / collected / outstanding for the range — the same
+              summary card shown above the bills list, so “My numbers” reads like
+              the printed CO-SHIP collection report. */}
+          <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-2.5" aria-label={`${rangeLabel} summary`}>
+            <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">
+                {days === '0' ? "Today's billed" : 'Billed'}
+              </p>
+              <p className="num mt-1 text-[17px] leading-none font-semibold sm:text-[19px]">{rupees(summary.billed)}</p>
+              <p className="num mt-1.5 text-[10.5px] leading-tight text-ink-faint sm:text-[11.5px]">
+                {summary.count} {summary.count === 1 ? 'bill' : 'bills'}{summary.cancelled ? ` · ${summary.cancelled} cancelled` : ''}
+              </p>
+            </div>
+            <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">Collected</p>
+              <p className={`num mt-1 text-[17px] leading-none font-semibold sm:text-[19px] ${summary.collected > 0 ? 'text-settled' : ''}`}>
+                {rupees(summary.collected)}
+              </p>
+              <p className="num mt-1.5 text-[10.5px] leading-tight text-ink-faint sm:text-[11.5px]">{rangeLabel}</p>
+            </div>
+            <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">Outstanding</p>
+              <p className={`num mt-1 text-[17px] leading-none font-semibold sm:text-[19px] ${summary.outstanding > 0.5 ? 'text-attention' : ''}`}>
+                {rupees(summary.outstanding)}
+              </p>
+              <p className="num mt-1.5 text-[10.5px] leading-tight text-ink-faint sm:text-[11.5px]">
+                {summary.open} open{summary.outstanding <= 0.5 ? ' · all closed' : ''}
+              </p>
+            </div>
+          </div>
+
+          {/* Bill-wise statement: S.No / invoice / party / amount + grand total. */}
+          <div className="mt-4 sm:mt-5">
+            <SectionTitle hint={`${periodLabel} · ${summary.count} ${summary.count === 1 ? 'bill' : 'bills'}`}>
+              Bill-wise
+            </SectionTitle>
+            {billRows.length === 0 ? (
+              <Card className="p-5 text-center">
+                <p className="text-[14px] font-medium">No bills in this period.</p>
+                <p className="mt-1 text-[13px] text-ink-faint">Upload a batch from “Add bills” to see the invoice-wise statement here.</p>
+              </Card>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+                <table className="w-full min-w-[440px] text-[13px]">
+                  <thead>
+                    <tr className="border-b border-line text-left text-[11px] uppercase tracking-wider text-ink-faint">
+                      <th className="w-12 py-2.5 pl-3.5 pr-2 font-semibold">S.No</th>
+                      <th className="py-2.5 px-2 font-semibold">Invoice</th>
+                      <th className="py-2.5 px-2 font-semibold">Party</th>
+                      <th className="py-2.5 pl-2 pr-3.5 text-right font-semibold">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-line">
+                    {billRows.map((b, i) => (
+                      <tr key={b.id}>
+                        <td className="num py-2.5 pl-3.5 pr-2 text-ink-faint">{i + 1}</td>
+                        <td className="num whitespace-nowrap py-2.5 px-2">{b.invoice_no}</td>
+                        <td className="max-w-[160px] truncate py-2.5 px-2">{b.shop_name}</td>
+                        <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right">{rupees(b.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-line bg-surface">
+                      <td colSpan={3} className="py-2.5 pl-3.5 pr-2 text-[13.5px] font-semibold">Total</td>
+                      <td className="num whitespace-nowrap py-2.5 pl-2 pr-3.5 text-right text-[13.5px] font-semibold">
+                        {rupees(summary.billed)}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
 
           <div className="mt-4 sm:mt-5">

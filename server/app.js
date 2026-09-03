@@ -5,7 +5,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getRequestClient, releaseClient } from './db.js';
-import { readFile } from './storage.js';
+import { readFile, verifySignedUpload } from './storage.js';
 import { attachUser, resolveUser } from './auth.js';
 import { router as authRouter } from './routes/auth.js';
 import { router as fieldRouter } from './routes/field.js';
@@ -92,14 +92,18 @@ app.use('/api/sync', apiLimiter, syncRouter);
 app.use('/api/export', apiLimiter, exportRouter);
 
 // ── Attachments — streamed from storage (Supabase Storage or local disk) ──
-// One route for every host: names stay opaque, bytes never live on the
-// server's own disk in serverless mode.
+// One route for every host: names stay opaque and bytes never live on the
+// server's own disk in serverless mode. Files are only served with a valid
+// short-lived signature (minted by POST /api/attachments/sign for a logged-in
+// user) — knowing the file name alone is not enough.
 app.get('/uploads/:file', async (req, res) => {
+  const name = verifySignedUpload(req.params.file, req.query.expires, req.query.sig);
+  if (!name) return res.status(403).type('text/plain').send('That link has expired or is not valid. Open the page again to get a fresh link.');
   try {
-    const file = await readFile(req.params.file);
+    const file = await readFile(name);
     if (!file) return res.status(404).type('text/plain').send('Attachment not found.');
     res.set('Content-Type', file.contentType);
-    res.set('Cache-Control', 'public, max-age=3600');
+    res.set('Cache-Control', 'private, no-store');
     res.end(file.data);
   } catch (err) {
     console.error('[uploads] read failed:', err.message);

@@ -130,6 +130,13 @@ collection screenshots in a private Supabase Storage bucket (default name `field
 override with `SUPABASE_STORAGE_BUCKET`). Without those keys files fall back to `server/uploads/`
 on disk — fine for dev and a single VPS, but not serverless.
 
+Attachment access: `/uploads/*` is never public. The API signs short-lived per-file URLs
+(`POST /api/attachments/sign`, logged-in only) and the client requests a fresh signature each
+time an attachment is opened. Signatures are HMAC-SHA256 over the file name + expiry; they live
+typically one hour (`UPLOAD_SIGN_TTL` seconds) and are rejected after that or when tampered.
+The signing key is derived from `DATABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`, or pin it explicitly
+with `UPLOAD_SIGN_SECRET` (recommended on multi-instance hosts).
+
 ---
 
 ## Deploying to Vercel

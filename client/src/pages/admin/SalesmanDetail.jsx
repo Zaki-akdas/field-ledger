@@ -5,6 +5,7 @@ import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js'
 import {
   Card, ErrorNote, Loading, Money, Pill, SectionTitle, TableWrap, Td, Th, Variance, cx,
 } from '../../components/ui.jsx';
+import AttachmentLink from '../../components/AttachmentLink.jsx';
 
 const TONE = { delivered: 'settled', partial: 'attention', pending: 'neutral', cancelled: 'attention' };
 
@@ -105,7 +106,7 @@ export default function SalesmanDetail() {
                 <Td className="hidden text-ink-soft xl:table-cell">{c.note || '—'}{c.attachment && (
                   <>
                     {' '}
-                    <a href={`/uploads/${c.attachment}`} target="_blank" rel="noreferrer" className="underline">file</a>
+                    <AttachmentLink name={c.attachment} className="underline">file</AttachmentLink>
                   </>
                 )}
                 </Td>

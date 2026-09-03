@@ -177,14 +177,27 @@ async function main() {
   check('Photo upload stores an attachment', att.status === 200 && att.data?.path, JSON.stringify(att.data));
   if (att.status === 200) storedFiles.push(att.data.path);
 
-  // /uploads/* is a root route (served by the app), not under /api.
-  const fetched = await fetch(`${ROOT}/uploads/${att.data?.path}`);
+  // /uploads/* is a root route (served by the app), not under /api. Files are
+  // not public: fetch them through a freshly signed URL, and confirm that a
+  // bare filename (no signature) is refused.
+  const sign = async (name) => {
+    const r = await call('POST', '/attachments/sign', { token: S, body: { names: [name] } });
+    return r.data?.urls?.[name];
+  };
+
+  const bare = await fetch(`${ROOT}/uploads/${att.data?.path}`);
+  check('Unsigned attachment fetch is refused (403)', bare.status === 403, String(bare.status));
+
+  const fetched = await fetch(`${ROOT}${await sign(att.data?.path)}`);
   const fetchedBytes = Buffer.from(await fetched.arrayBuffer());
-  check('Attachment downloads back with bytes', fetched.status === 200 && fetchedBytes.byteLength > 0, `${fetchedBytes.byteLength}B`);
+  check('Signed attachment downloads back with bytes', fetched.status === 200 && fetchedBytes.byteLength > 0, `${fetchedBytes.byteLength}B`);
   check('Attachment served with its content type', /image\/png/.test(fetched.headers.get('content-type') || ''));
 
-  const missing = await fetch(`${ROOT}/uploads/does-not-exist-123.png`);
+  const missing = await fetch(`${ROOT}${await sign('does-not-exist-123.png')}`);
   check('Unknown attachment is a 404', missing.status === 404, String(missing.status));
+
+  const tampered = await fetch(`${ROOT}${(await sign(att.data?.path)).replace(/sig=[a-f0-9]{8}/, 'sig=deadbeef')}`);
+  check('Tampered signature is refused (403)', tampered.status === 403, String(tampered.status));
 
   const target = (await call('GET', `/bills?q=${encodeURIComponent(testInvoice)}`, { token: S })).data.bills[0];
   if (target) {
@@ -205,7 +218,7 @@ async function main() {
     const name = detail.collections?.find((c) => c.ref_no === 'UTR-TEST-ATTACH')?.attachment;
     check('Collection carries the stored attachment name', Boolean(name), String(name));
     if (name) {
-      const dl = await fetch(`${ROOT}/uploads/${name}`);
+      const dl = await fetch(`${ROOT}${await sign(name)}`);
       const dlBytes = Buffer.from(await dl.arrayBuffer());
       check('Materialised photo downloads', dl.status === 200 && dlBytes.byteLength > 0);
       storedFiles.push(name);

@@ -5,7 +5,7 @@ import { billRows, billRow, reconcile, round2, q1, qx, pool } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { todayISO } from '../dates.js';
 import { upload, photoUpload } from '../uploads.js';
-import { saveFile } from '../storage.js';
+import { saveFile, signedUploadUrl } from '../storage.js';
 import { parseBillWorkbook } from '../import.js';
 import { createBill, recordCollection, cancelBill, uncancelBill, addShortItems, HttpError } from '../mutations.js';
 
@@ -82,6 +82,31 @@ router.post('/attachments', photoUpload.single('file'), handle(async (req, res) 
   });
   if (!name) return res.status(500).json({ error: 'Could not store that photo right now. Try again.' });
   res.json({ path: name, original: req.file.originalname });
+}));
+
+/**
+ * Mint short-lived, signed /uploads URLs for a set of stored files.
+ * Logged-in only (the router above applies requireAuth); the URLs are
+ * per-file, expire after an hour, and are the only way to fetch bytes —
+ * attachment names in the database are not enough to download a file.
+ */
+router.post('/attachments/sign', handle(async (req, res) => {
+  const asked = Array.isArray(req.body?.names)
+    ? req.body.names
+    : req.body?.name ? [req.body.name] : [];
+  const names = [...new Set(asked.map((n) => String(n)).filter(Boolean))].slice(0, 50);
+  if (names.length === 0) return res.status(400).json({ error: 'Send attachment name(s) to sign.' });
+  const urls = {};
+  for (const n of names) {
+    const u = signedUploadUrl(n);
+    if (u) urls[n] = u;
+  }
+  res.json({
+    urls,
+    // Seconds after which every URL in this response expires; the client
+    // re-signs when it needs fresh links (refresh or re-open).
+    expiresIn: Number(process.env.UPLOAD_SIGN_TTL || 3600),
+  });
 }));
 
 /* ---------------------------------------------------------- field writes --- */

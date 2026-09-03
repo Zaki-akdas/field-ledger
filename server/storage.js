@@ -116,6 +116,59 @@ export async function deleteFile(name) {
   await fs.promises.unlink(path.join(UPLOAD_DIR, path.basename(name))).catch(() => {});
 }
 
+/* ------------------------------------------------------------- signing --- */
+
+const SIGN_TTL_SECONDS = Number(process.env.UPLOAD_SIGN_TTL || 60 * 60); // 1 hour default
+
+/**
+ * The signing secret for attachment URLs. Never committed: it is derived
+ * from secrets already present in the environment, and can be pinned with
+ * UPLOAD_SIGN_SECRET in production (multi-instance hosts need a stable
+ * value so a URL signed by one instance verifies on another).
+ */
+function signingSecret() {
+  if (process.env.UPLOAD_SIGN_SECRET) return String(process.env.UPLOAD_SIGN_SECRET);
+  const base = [process.env.DATABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY]
+    .filter(Boolean)
+    .join('|');
+  // Never a constant when only the public DB URL is known; hash what we have.
+  return crypto.createHash('sha256').update(base || String(Date.now())).digest('hex');
+}
+
+/** Build a short-lived URL like /uploads/<name>?expires=…&sig=… */
+export function signedUploadUrl(name) {
+  const base = path.basename(String(name || ''));
+  if (!base || base.includes('..')) return null;
+  const expires = Math.floor(Date.now() / 1000) + SIGN_TTL_SECONDS;
+  const sig = crypto
+    .createHmac('sha256', signingSecret())
+    .update(`${base}.${expires}`)
+    .digest('hex');
+  return `/uploads/${encodeURIComponent(base)}?expires=${expires}&sig=${sig}`;
+}
+
+/**
+ * Verify a signed /uploads request. Returns the file name when the signature
+ * is valid and unexpired, else null (→ 403).
+ */
+export function verifySignedUpload(name, expires, sig) {
+  const base = path.basename(String(name || ''));
+  const exp = Number(expires);
+  if (!base || !Number.isFinite(exp) || !sig || base.includes('..')) return null;
+  // Reject an unbounded future expiry (nothing past ~14 days verifies, so a
+  // leaked URL cannot be parked open-endedly even with a valid signature).
+  if (exp < Math.floor(Date.now() / 1000) - 60 || exp > Math.floor(Date.now() / 1000) + 14 * 24 * 3600) return null;
+  const expect = crypto
+    .createHmac('sha256', signingSecret())
+    .update(`${base}.${exp}`)
+    .digest('hex');
+  // Constant-time compare — the signature is the only gate here.
+  const a = Buffer.from(expect);
+  const b = Buffer.from(String(sig));
+  if (a.length !== b.length) return null;
+  return crypto.timingSafeEqual(a, b) ? base : null;
+}
+
 /* ---------------------------------------------------------------- reads --- */
 
 /**

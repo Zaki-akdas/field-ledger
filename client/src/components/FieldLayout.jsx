@@ -60,7 +60,12 @@ export default function FieldLayout() {
       {/* Running total — always visible, the number a salesman checks first. */}
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur safe-top">
         <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
-          <div className="min-w-0">
+          <NavLink
+            to="/field/me"
+            aria-label="My numbers — full day breakdown"
+            title="My numbers — full day breakdown"
+            className="group min-w-0 block rounded-lg px-0.5 py-0.5 -ml-0.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink active:opacity-70"
+          >
             <p className="text-[11px] font-medium uppercase tracking-wider text-ink-faint">
               Today · {new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
             </p>
@@ -90,12 +95,26 @@ export default function FieldLayout() {
                 <>
                   billed <span className="font-medium text-ink">₹{money(billed)}</span>
                   {' · '}due <span className="font-medium text-ink">₹{money(due)}</span>
-                  {' · '}<span className={pendingCount > 0 ? 'text-attention-deep font-medium' : ''}>{pendingCount}</span> pending
+              {' · '}<span className={pendingCount > 0 ? 'text-attention-deep font-medium' : ''}>{pendingCount}</span> pending
                   {' · '}<span className="font-medium">{deliveredCount}</span> delivered
                 </>
               )}
+              <svg
+                viewBox="0 0 24 24"
+                width="11"
+                height="11"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className="ml-1 inline text-ink-faint transition-transform group-hover:translate-x-0.5"
+              >
+                <path d="M9 6l6 6-6 6" />
+              </svg>
             </p>
-          </div>
+          </NavLink>
           <div className="flex items-center gap-2">
             {!online && (
               <span className="rounded-full border border-attention/40 bg-attention-tint px-2.5 py-1 text-[11px] font-medium text-attention-deep">

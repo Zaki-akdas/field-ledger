@@ -115,3 +115,60 @@ CREATE INDEX IF NOT EXISTS idx_bills_salesman ON bills(salesman_id);
 CREATE INDEX IF NOT EXISTS idx_col_bill ON collections(bill_id);
 CREATE INDEX IF NOT EXISTS idx_col_date ON collections(collection_date);
 CREATE INDEX IF NOT EXISTS idx_col_salesman ON collections(salesman_id);
+
+-- ── Pre-auth lookups (SECURITY DEFINER) ────────────────────────────────────
+-- Login and token→user resolution run before a JWT actor exists, so RLS
+-- (which keys on request.jwt.claims) would return nothing for a non-owner
+-- DATABASE_URL role. These helpers execute as the table owner and return
+-- exactly the columns the app needs. EXECUTE is revoked from PUBLIC and
+-- granted to the platform 'authenticated' role; custom roles need their own
+-- GRANT (see README). Kept in sync with tools/setup-rls.js.
+CREATE OR REPLACE FUNCTION app_find_user_by_code(p_code text)
+RETURNS TABLE (id integer, code text, name text, role text, phone text, password_hash text)
+LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT id, code, name, role, phone, password_hash
+  FROM users
+  WHERE lower(code) = lower(p_code) AND active = 1
+  LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION app_session_user(p_token text)
+RETURNS TABLE (id integer, code text, name text, role text, phone text)
+LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT u.id, u.code, u.name, u.role, u.phone
+  FROM sessions s JOIN users u ON u.id = s.user_id
+  WHERE s.token = p_token AND u.active = 1
+  LIMIT 1;
+$$;
+
+CREATE OR REPLACE FUNCTION app_create_session(p_token text, p_user_id integer)
+RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+  INSERT INTO sessions (token, user_id) VALUES (p_token, p_user_id);
+$$;
+
+CREATE OR REPLACE FUNCTION app_destroy_session(p_token text)
+RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public
+AS $$
+  DELETE FROM sessions WHERE token = p_token;
+$$;
+
+REVOKE ALL ON FUNCTION app_find_user_by_code(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_session_user(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_create_session(text, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app_destroy_session(text) FROM PUBLIC;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN
+    GRANT EXECUTE ON FUNCTION app_find_user_by_code(text) TO authenticated;
+    GRANT EXECUTE ON FUNCTION app_session_user(text) TO authenticated;
+    GRANT EXECUTE ON FUNCTION app_create_session(text, integer) TO authenticated;
+    GRANT EXECUTE ON FUNCTION app_destroy_session(text) TO authenticated;
+  END IF;
+END
+$$;

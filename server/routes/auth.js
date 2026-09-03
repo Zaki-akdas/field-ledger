@@ -2,12 +2,25 @@ import { Router } from 'express';
 import { q1, qx } from '../db.js';
 import { createSession, destroySession, verifyPassword, hashPassword, publicUser, requireAuth } from '../auth.js';
 
+/** Pre-auth user lookup — SECURITY DEFINER helper, legacy query as fallback. */
+async function findUserByCode(code) {
+  try {
+    return await q1('SELECT * FROM app_find_user_by_code($1)', [code]);
+  } catch (err) {
+    if (err?.code === '42883') {
+      console.warn('[auth] SECURITY DEFINER helpers missing — run tools/setup-rls.js; using legacy query');
+      return await q1('SELECT * FROM users WHERE lower(code) = lower($1) AND active = 1', [code]);
+    }
+    throw err;
+  }
+}
+
 export const router = Router();
 
 router.post('/login', async (req, res) => {
   const { code, password } = req.body || {};
   if (!code || !password) return res.status(400).json({ error: 'Enter your login code and password.' });
-  const user = await q1('SELECT * FROM users WHERE lower(code) = lower($1) AND active = 1', [String(code).trim()]);
+  const user = await findUserByCode(String(code).trim());
   if (!user || !verifyPassword(String(password), user.password_hash)) {
     return res.status(401).json({ error: 'Login code or password is wrong. Check and try again.' });
   }

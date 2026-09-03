@@ -134,7 +134,14 @@ GUC (`request.jwt.claims = {"sub":…,"role":…}`, `set_config(…, is_local)`)
 PostgREST fills from a request's Bearer JWT** — so **reads and writes both carry JWT-claim context**
 and a query through the app and one through PostgREST carrying the same token authorize identically.
 The app stays correct even if `DATABASE_URL` ever connects as a non-owner role (today it connects as
-the table owner, which bypasses RLS). This is exactly the pattern Supabase's
+the table owner, which bypasses RLS). The one exception is the **pre-auth surface** — login and
+token→user resolution run before any JWT actor exists, so RLS (which keys on `request.jwt.claims`)
+would return nothing for them. Those four lookups go through **`SECURITY DEFINER` helpers**
+(`app_find_user_by_code`, `app_session_user`, `app_create_session`, `app_destroy_session` in
+`server/schema.sql`, mirrored in `tools/setup-rls.js`) that execute as the table owner and return
+exactly the columns the app needs; EXECUTE is revoked from PUBLIC and granted to the platform
+`authenticated` role — a custom `DATABASE_URL` role needs its own `GRANT EXECUTE ON FUNCTION …`
+plus base table grants. This is exactly the pattern Supabase's
 **transaction-mode pooler** supports: point `DATABASE_URL` at the pooler on **port 6543**
 (`postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`) so concurrent
 requests share a few backends instead of exhausting the 15-session cap of port 5432. The realtime

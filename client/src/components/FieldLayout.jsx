@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { useAuth, useSync } from '../lib/context.jsx';
 import { useApi, useDarkMode } from '../lib/hooks.js';
 import { useRealtime } from '../lib/realtime.js';
-import { todayISO } from '../lib/format.js';
+import { todayISO, money } from '../lib/format.js';
 import { cx, Money, Spinner } from './ui.jsx';
 
 const NAV = [
@@ -45,6 +45,10 @@ export default function FieldLayout() {
   }, [reload]);
 
   const collected = data?.collected ?? 0;
+  // Today's overall book: expected is billed minus cancellations and shorts, so
+  // billed = expected + cancelled + short; outstanding = pending amount.
+  const billed = (data?.expected ?? 0) + (data?.cancelled?.amount ?? 0) + (data?.short?.amount ?? 0);
+  const due = data?.pending?.amount ?? 0;
   const pendingCount = (data?.bills?.pending || 0) + (data?.bills?.partial || 0);
 
   return (
@@ -59,6 +63,14 @@ export default function FieldLayout() {
             <p className="num text-[22px] leading-tight font-medium">
               {loading && !data ? <span className="text-ink-faint text-base">…</span> : <Money value={collected} />}
               <span className="ml-2 text-[11.5px] font-sans font-normal text-ink-faint">collected</span>
+            </p>
+            <p className="num mt-0.5 text-[11.5px] leading-tight text-ink-soft">
+              {loading && !data ? '…' : (
+                <>
+                  billed <span className="font-medium text-ink">₹{money(billed)}</span>
+                  {' · '}due <span className="font-medium text-ink">₹{money(due)}</span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">

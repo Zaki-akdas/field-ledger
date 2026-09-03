@@ -117,20 +117,24 @@ half-succeeded request can never double-collect a payment. The queue is visible 
 | Back end | Express 4 (`server/app.js` shared by Node and serverless hosts) |
 | Database | Supabase PostgreSQL via `pg` (`server/schema.sql`) |
 | Realtime | PostgreSQL `LISTEN/NOTIFY` triggers → SSE endpoint (`/api/realtime`) |
-| Security | Row-level security policies + per-request DB session context, scrypt hashes |
+| Security | Row-level security policies + JWT-claim context (same model PostgREST uses), scrypt hashes |
 | Uploads | multer → Supabase Storage (`server/storage.js`), workbooks parsed with ExcelJS |
 | Exports | ExcelJS (`.xlsx`), PDFKit (`.pdf`) |
-| Auth | Login code + scrypt password hash, random session token in `Authorization: Bearer` |
+| Auth | Login code + scrypt password hash; sessions are signed HS256 JWTs (`sub`, `role`, expiry) |
 
 Environment variables: `DATABASE_URL` (required), `DATABASE_SSL=false` (disable TLS for a local
-Postgres), `PORT`, `CORS_ORIGINS` (comma-separated, production), `PGPOOL_MAX` (DB pool size).
+Postgres), `PORT`, `CORS_ORIGINS` (comma-separated, production), `PGPOOL_MAX` (DB pool size),
+`JWT_SECRET` (pin the JWT signing key; derived from existing secrets when unset),
+`JWT_TTL_SECONDS` (default 7 days).
 
 **Connection model:** the app connects through a shared pool, and each HTTP request runs inside
 **one database transaction** that is opened lazily on the first query and committed when the response
-finishes. The RLS session variables (`app.current_user_id`, `app.current_user_role`) are set with
-`set_config(…, is_local)` at the start of that transaction, so **reads and writes both carry RLS
-context** — the app stays correct even if `DATABASE_URL` ever connects as a non-owner role (today it
-connects as the table owner, which bypasses RLS). This is exactly the pattern Supabase's
+finishes. Logging in returns a signed HS256 JWT, and the start of that transaction sets the claims
+GUC (`request.jwt.claims = {"sub":…,"role":…}`, `set_config(…, is_local)`) — **the same GUC
+PostgREST fills from a request's Bearer JWT** — so **reads and writes both carry JWT-claim context**
+and a query through the app and one through PostgREST carrying the same token authorize identically.
+The app stays correct even if `DATABASE_URL` ever connects as a non-owner role (today it connects as
+the table owner, which bypasses RLS). This is exactly the pattern Supabase's
 **transaction-mode pooler** supports: point `DATABASE_URL` at the pooler on **port 6543**
 (`postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`) so concurrent
 requests share a few backends instead of exhausting the 15-session cap of port 5432. The realtime

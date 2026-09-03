@@ -11,7 +11,7 @@ router.post('/login', async (req, res) => {
   if (!user || !verifyPassword(String(password), user.password_hash)) {
     return res.status(401).json({ error: 'Login code or password is wrong. Check and try again.' });
   }
-  const token = await createSession(user.id);
+  const token = await createSession(user);
   res.json({ token, user: publicUser(user) });
 });
 

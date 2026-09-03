@@ -1,10 +1,19 @@
 /**
  * Set up Row Level Security (RLS) on all tables.
- * Uses PostgreSQL session variables set by the app on each request:
- *   SET app.current_user_id = '<user_id>';
- *   SET app.current_user_role = '<role>';
  *
- * Run once: node tools/setup-rls.js
+ * Supabase JWT-claim model: the app authenticates with a signed HS256 JWT
+ * (sub = user id, role = business role) and each request transaction plants
+ * the claims in the same GUC PostgREST receives from a request JWT:
+ *
+ *   SET request.jwt.claims = '{"sub":"7","role":"admin"}';
+ *
+ * The helpers below parse that one source, so a query that arrives through
+ * the app and one that arrives through PostgREST carrying the same token
+ * authorize identically. (Supabase's own auth.uid() is uuid-based; this app
+ * keys identities on its users.id integer, hence these int-returning
+ * equivalents reading the same claims.)
+ *
+ * Run: node --env-file=.env tools/setup-rls.js
  */
 import pg from 'pg';
 const { Client } = pg;
@@ -24,22 +33,27 @@ await c.connect();
 console.log('Connected to Supabase PostgreSQL\n');
 
 // ────────────────────────────────────────────────────────────
-// 1. Helper function to read current user from session vars
+// 1. Helpers reading the request's JWT claims (request.jwt.claims),
+//    the same GUC PostgREST fills from a request's Bearer JWT.
 // ────────────────────────────────────────────────────────────
 await c.query(`
   CREATE OR REPLACE FUNCTION current_user_id() RETURNS int AS $$
-    SELECT NULLIF(current_setting('app.current_user_id', true), '')::int;
+    SELECT (NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::int;
   $$ LANGUAGE sql STABLE;
 
   CREATE OR REPLACE FUNCTION current_user_role() RETURNS text AS $$
-    SELECT NULLIF(current_setting('app.current_user_role', true), '');
+    SELECT NULLIF(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role';
+  $$ LANGUAGE sql STABLE;
+
+  CREATE OR REPLACE FUNCTION current_jwt() RETURNS jsonb AS $$
+    SELECT NULLIF(current_setting('request.jwt.claims', true), '')::jsonb;
   $$ LANGUAGE sql STABLE;
 
   CREATE OR REPLACE FUNCTION is_admin() RETURNS boolean AS $$
     SELECT current_user_role() = 'admin';
   $$ LANGUAGE sql STABLE;
 `);
-console.log('✓ Created helper functions: current_user_id(), current_user_role(), is_admin()');
+console.log('✓ Created helpers reading request.jwt.claims: current_user_id(), current_user_role(), current_jwt(), is_admin()');
 
 // ────────────────────────────────────────────────────────────
 // 2. Enable RLS on all tables

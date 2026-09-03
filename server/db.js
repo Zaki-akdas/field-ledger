@@ -41,7 +41,7 @@ pool.on('error', (err) => {
 /**
  * Per-request database scope. The request middleware (app.js) runs each
  * request inside this store with { user }. The first q/q1/qx/tx call opens
- * one transaction for the whole request and sets the RLS session variables
+ * one transaction for the whole request and sets the RLS claims GUC
  * transaction-locally; every later query — read or write — reuses that same
  * client, so Row Level Security sees the same actor for the entire request
  * and never leaks context to another request on the same pooled backend.
@@ -51,8 +51,11 @@ export const requestStore = new AsyncLocalStorage();
 
 async function setRlsContext(client, user) {
   if (!user) return;
-  await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [String(user.id)]);
-  await client.query(`SELECT set_config('app.current_user_role', $1, true)`, [user.role || '']);
+  // Supabase JWT-claim model: request.jwt.claims is the exact GUC PostgREST
+  // derives from a request JWT, so app queries and PostgREST authorize from
+  // the same claims. The RLS helpers (tools/setup-rls.js) parse this JSON.
+  const claims = JSON.stringify({ sub: String(user.id), role: user.role || '' });
+  await client.query(`SELECT set_config('request.jwt.claims', $1, true)`, [claims]);
 }
 
 /**

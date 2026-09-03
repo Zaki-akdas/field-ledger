@@ -25,8 +25,13 @@ const TABLES = ['collections', 'bills', 'cancellations', 'short_items'];
 let reconnectDelay = 1000;
 
 async function setupListeners() {
+  // LISTEN requires a long-lived session, which the transaction-mode pooler
+  // (port 6543, used for DATABASE_URL) cannot provide. Point the listener at
+  // a session-mode connection: REALTIME_DATABASE_URL when set (Supabase
+  // session pooler / direct), otherwise DATABASE_URL (plain local Postgres).
+  const listenerUrl = process.env.REALTIME_DATABASE_URL || process.env.DATABASE_URL;
   const listener = new pg.Client({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: listenerUrl,
     ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
   });
 

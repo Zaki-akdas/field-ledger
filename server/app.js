@@ -4,7 +4,6 @@ import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { getRequestClient, releaseClient } from './db.js';
 import { readFile, verifySignedUpload } from './storage.js';
 import { attachUser, resolveUser } from './auth.js';
 import { router as authRouter } from './routes/auth.js';
@@ -69,18 +68,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(attachUser);
 app.use(resolveUser);
 
-// ── RLS context — each request gets its own PostgreSQL client ──────────
-app.use(async (req, res, next) => {
-  if (req.user) {
-    try {
-      req._dbClient = await getRequestClient(req.user);
-    } catch (err) {
-      console.error('[rls] Failed to set up request client:', err.message);
-    }
-  }
-  res.on('finish', () => releaseClient(req._dbClient));
-  next();
-});
+// No per-request database session. Requests share the pool (db.js), which
+// connects through the transaction-mode pooler; RLS context is applied
+// per-transaction inside tx() for writes, and reads are authorized at the
+// route layer. This is what keeps concurrent requests from pinning
+// sessions and exhausting Supabase's connection budget.
 
 // ── Routes ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));

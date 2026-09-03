@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
-import { billRows, billRow, reconcile, round2, q1, qx, pool } from '../db.js';
+import { billRows, billRow, reconcile, round2, q1, qx, q } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { todayISO } from '../dates.js';
 import { upload, photoUpload } from '../uploads.js';
@@ -35,21 +35,18 @@ router.get('/bills', handle(async (req, res) => {
 }));
 
 router.get('/bills/:id', handle(async (req, res) => {
-  const client = req._dbClient || pool;
   const bill = await billRow(Number(req.params.id));
   if (!bill) return res.status(404).json({ error: 'Bill not found.' });
   if (req.user.role !== 'admin' && bill.salesman_id !== req.user.id) {
     return res.status(403).json({ error: 'This bill is not on your route.' });
   }
-  const colRes = await client.query('SELECT * FROM collections WHERE bill_id = $1 ORDER BY id', [bill.id]);
-  const collectionsList = colRes.rows;
+  const collectionsList = await q('SELECT * FROM collections WHERE bill_id = $1 ORDER BY id', [bill.id]);
   for (const c of collectionsList) {
-    const denRes = await client.query('SELECT denom, count FROM cash_denominations WHERE collection_id = $1 ORDER BY denom DESC', [c.id]);
-    c.denominations = denRes.rows;
+    c.denominations = await q('SELECT denom, count FROM cash_denominations WHERE collection_id = $1 ORDER BY denom DESC', [c.id]);
   }
-  const shortRes = await client.query('SELECT * FROM short_items WHERE bill_id = $1 ORDER BY id', [bill.id]);
-  const cancelRes = await client.query('SELECT * FROM cancellations WHERE bill_id = $1', [bill.id]);
-  res.json({ bill, collections: collectionsList, short_items: shortRes.rows, cancellation: cancelRes.rows[0] || null });
+  const shortItems = await q('SELECT * FROM short_items WHERE bill_id = $1 ORDER BY id', [bill.id]);
+  const cancellation = (await q('SELECT * FROM cancellations WHERE bill_id = $1', [bill.id]))[0] || null;
+  res.json({ bill, collections: collectionsList, short_items: shortItems, cancellation });
 }));
 
 router.post('/bills', handle(async (req, res) => {
@@ -189,8 +186,7 @@ router.get('/me/dashboard', handle(async (req, res) => {
       pendingAmount += b.balance;
     }
   }
-  const client = req._dbClient || pool;
-  const deposit = await client.query(
+  const deposit = await q1(
     "SELECT COALESCE(SUM(amount),0) AS cash_today FROM collections WHERE salesman_id = $1 AND mode = 'cash' AND collection_date = $2",
     [salesmanId, todayISO()],
   );
@@ -205,7 +201,7 @@ router.get('/me/dashboard', handle(async (req, res) => {
     cancelled: { count: r.cancelled_count, amount: r.cancelled_amount },
     short: { amount: r.short_amount, count: bills.reduce((a, b) => a + (b.short_count || 0), 0) },
     pending: { count: pending.length, amount: round2(pendingAmount) },
-    cash_in_hand: round2(deposit.rows[0].cash_today),
+    cash_in_hand: round2(deposit?.cash_today || 0),
     pending_list: pending.slice(0, 60),
   });
 }));
@@ -213,27 +209,24 @@ router.get('/me/dashboard', handle(async (req, res) => {
 /* -------------------------------------------------------------- lookups --- */
 
 router.get('/shops', handle(async (req, res) => {
-  const q = String(req.query.q || '').trim();
+  const needle = String(req.query.q || '').trim();
   const salesmanId = req.user.role === 'admin' ? null : req.user.id;
-  const client = req._dbClient || pool;
-  const rows = await client.query(`
+  const rows = await q(`
     SELECT id, name, area, owner_name FROM shops
     WHERE ($1::int IS NULL OR salesman_id = $1)
       AND ($2 = '' OR lower(name) LIKE '%' || lower($2) || '%' OR lower(COALESCE(area,'')) LIKE '%' || lower($2) || '%')
-    ORDER BY name LIMIT 40`, [salesmanId, q]);
-  res.json({ shops: rows.rows });
+    ORDER BY name LIMIT 40`, [salesmanId, needle]);
+  res.json({ shops: rows });
 }));
 
 router.get('/products', handle(async (req, res) => {
-  const client = req._dbClient || pool;
-  const rows = await client.query('SELECT id, name, default_rate FROM products ORDER BY name');
-  res.json({ products: rows.rows });
+  const rows = await q('SELECT id, name, default_rate FROM products ORDER BY name');
+  res.json({ products: rows });
 }));
 
 router.get('/salesmen', requireRole('admin'), handle(async (req, res) => {
-  const client = req._dbClient || pool;
-  const rows = await client.query("SELECT id, code, name, phone FROM users WHERE role = 'salesman' AND active = 1 ORDER BY code");
-  res.json({ salesmen: rows.rows });
+  const rows = await q("SELECT id, code, name, phone FROM users WHERE role = 'salesman' AND active = 1 ORDER BY code");
+  res.json({ salesmen: rows });
 }));
 
 export { HttpError };

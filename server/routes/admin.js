@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { reconcile, cashRollup, round2, pool } from '../db.js';
+import { reconcile, cashRollup, round2, q1, q } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { todayISO, isoDaysAgo } from '../dates.js';
 
@@ -16,20 +16,18 @@ function rangeOf(req) {
   };
 }
 
-async function salesmanRows({ from, to, salesmanId, client }) {
-  const c = client || pool;
+async function salesmanRows({ from, to, salesmanId }) {
   const where = salesmanId ? 'AND u.id = $1' : '';
   const args = salesmanId ? [salesmanId] : [];
-  const { rows: people } = await c.query(`SELECT id, code, name, phone FROM users u WHERE u.role = 'salesman' AND u.active = 1 ${where} ORDER BY u.code`, args);
-  // Per-salesman work is independent — run it in parallel. Over a remote
-  // database this takes the reconciliation screen from ~6s to well under 1s.
+  const people = await q(`SELECT id, code, name, phone FROM users u WHERE u.role = 'salesman' AND u.active = 1 ${where} ORDER BY u.code`, args);
+  // Per-salesman work is independent — run it in parallel against the shared
+  // pool (transaction-mode pooler multiplexes these over few backends).
   return Promise.all(people.map(async (p) => {
     const [r, session, lastCol] = await Promise.all([
       reconcile({ from, to, salesmanId: p.id }),
-      c.query('SELECT started_at, ended_at FROM day_sessions WHERE salesman_id = $1 AND work_date = $2', [p.id, todayISO()]),
-      c.query('SELECT MAX(created_at) AS t FROM collections WHERE salesman_id = $1', [p.id]),
+      q1('SELECT started_at, ended_at FROM day_sessions WHERE salesman_id = $1 AND work_date = $2', [p.id, todayISO()]),
+      q1('SELECT MAX(created_at) AS t FROM collections WHERE salesman_id = $1', [p.id]),
     ]);
-    const sess = session.rows[0];
     return {
       ...p,
       bill_count: r.bill_count,
@@ -41,16 +39,15 @@ async function salesmanRows({ from, to, salesmanId, client }) {
       cancelled_amount: r.cancelled_amount,
       short_amount: r.short_amount,
       by_mode: r.by_mode,
-      day_started: sess?.started_at ? String(sess.started_at).slice(11, 16) : null,
-      day_ended: sess?.ended_at ? String(sess.ended_at).slice(11, 16) : null,
-      last_activity: lastCol.rows[0]?.t || null,
+      day_started: session?.started_at ? String(session.started_at).slice(11, 16) : null,
+      day_ended: session?.ended_at ? String(session.ended_at).slice(11, 16) : null,
+      last_activity: lastCol?.t || null,
     };
   }));
 }
 
 router.get('/reconciliation', async (req, res, next) => {
   try {
-    const client = req._dbClient || pool;
     const { from, to, salesmanId } = rangeOf(req);
     const start = new Date(from + 'T00:00:00Z');
     const end = new Date(to + 'T00:00:00Z');
@@ -63,7 +60,7 @@ router.get('/reconciliation', async (req, res, next) => {
     const [totals, dayResults, salesmen] = await Promise.all([
       reconcile({ from, to, salesmanId }),
       Promise.all(dates.map((day) => reconcile({ from: day, to: day, salesmanId }))),
-      salesmanRows({ from, to, salesmanId, client }),
+      salesmanRows({ from, to, salesmanId }),
     ]);
     const days = dayResults.map((r, i) => ({ date: dates[i], ...r }));
     res.json({
@@ -77,22 +74,20 @@ router.get('/reconciliation', async (req, res, next) => {
 
 router.get('/salesmen', async (req, res, next) => {
   try {
-    const client = req._dbClient || pool;
     const { from, to, salesmanId } = rangeOf(req);
-    res.json({ range: { from, to }, salesmen: await salesmanRows({ from, to, salesmanId, client }) });
+    res.json({ range: { from, to }, salesmen: await salesmanRows({ from, to, salesmanId }) });
   } catch (err) { next(err); }
 });
 
 router.get('/salesmen/:id', async (req, res, next) => {
   try {
-    const client = req._dbClient || pool;
     const { from, to } = rangeOf(req);
     const id = Number(req.params.id);
-    const person = await client.query('SELECT id, code, name, phone FROM users WHERE id = $1', [id]);
-    if (!person.rows.length) return res.status(404).json({ error: 'Salesman not found.' });
+    const person = await q1('SELECT id, code, name, phone FROM users WHERE id = $1', [id]);
+    if (!person) return res.status(404).json({ error: 'Salesman not found.' });
 
     const r = await reconcile({ from, to, salesmanId: id });
-    const bills = await client.query(`
+    const bills = await q(`
       SELECT b.*, s.name AS shop_name, s.area AS shop_area,
         COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) AS collected_amount,
         COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0) AS short_amount,
@@ -103,43 +98,42 @@ router.get('/salesmen/:id', async (req, res, next) => {
       WHERE b.salesman_id = $1 AND b.bill_date BETWEEN $2 AND $3
       ORDER BY b.bill_date DESC, b.id DESC`, [id, from, to]);
 
-    const collections = await client.query(`
+    const collections = await q(`
       SELECT c.*, b.invoice_no, s.name AS shop_name
       FROM collections c JOIN bills b ON b.id = c.bill_id JOIN shops s ON s.id = b.shop_id
       WHERE c.salesman_id = $1 AND c.collection_date BETWEEN $2 AND $3
       ORDER BY c.id DESC`, [id, from, to]);
 
-    const cancellations = await client.query(`
+    const cancellations = await q(`
       SELECT c.*, s.name AS shop_name FROM cancellations c JOIN bills b ON b.id = c.bill_id JOIN shops s ON s.id = b.shop_id
       WHERE c.salesman_id = $1 AND c.cancel_date BETWEEN $2 AND $3 ORDER BY c.id DESC`, [id, from, to]);
 
-    const shortages = await client.query(`
+    const shortages = await q(`
       SELECT si.*, b.invoice_no, s.name AS shop_name FROM short_items si
       JOIN bills b ON b.id = si.bill_id JOIN shops s ON s.id = b.shop_id
       WHERE si.salesman_id = $1 AND si.short_date BETWEEN $2 AND $3 ORDER BY si.id DESC`, [id, from, to]);
 
-    const sessions = await client.query('SELECT * FROM day_sessions WHERE salesman_id = $1 AND work_date BETWEEN $2 AND $3 ORDER BY work_date DESC', [id, from, to]);
+    const sessions = await q('SELECT * FROM day_sessions WHERE salesman_id = $1 AND work_date BETWEEN $2 AND $3 ORDER BY work_date DESC', [id, from, to]);
 
     res.json({
       range: { from, to },
-      salesman: person.rows[0],
+      salesman: person,
       reconciliation: r,
-      bills: bills.rows.map((b) => ({ ...b, expected_amount: b.cancelled_at ? 0 : round2(b.amount - b.short_amount), balance: round2((b.cancelled_at ? 0 : b.amount - b.short_amount) - b.collected_amount) })),
-      collections: collections.rows,
-      cancellations: cancellations.rows,
-      shortages: shortages.rows,
-      sessions: sessions.rows,
+      bills: bills.map((b) => ({ ...b, expected_amount: b.cancelled_at ? 0 : round2(b.amount - b.short_amount), balance: round2((b.cancelled_at ? 0 : b.amount - b.short_amount) - b.collected_amount) })),
+      collections,
+      cancellations,
+      shortages,
+      sessions,
     });
   } catch (err) { next(err); }
 });
 
 router.get('/cancellations', async (req, res, next) => {
   try {
-    const client = req._dbClient || pool;
     const { from, to, salesmanId } = rangeOf(req);
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND c.salesman_id = $3' : '';
-    const { rows } = await client.query(`
+    const rows = await q(`
       SELECT c.id, c.invoice_no, c.amount, c.reason, c.cancel_date, c.salesman_id,
              u.name AS salesman_name, u.code AS salesman_code, s.name AS shop_name, s.area AS shop_area
       FROM cancellations c
@@ -154,11 +148,10 @@ router.get('/cancellations', async (req, res, next) => {
 
 router.get('/shortages', async (req, res, next) => {
   try {
-    const client = req._dbClient || pool;
     const { from, to, salesmanId } = rangeOf(req);
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND si.salesman_id = $3' : '';
-    const { rows } = await client.query(`
+    const rows = await q(`
       SELECT si.id, si.product, si.qty, si.rate, si.amount, si.reason, si.short_date,
              b.invoice_no, s.name AS shop_name, u.name AS salesman_name, u.code AS salesman_code
       FROM short_items si
@@ -180,12 +173,11 @@ router.get('/cash-rollup', async (req, res, next) => {
 
 router.get('/bills', async (req, res, next) => {
   try {
-    const client = req._dbClient || pool;
     const { from, to, salesmanId } = rangeOf(req);
     const status = req.query.status;
     const params = salesmanId ? [from, to, salesmanId] : [from, to];
     const where = salesmanId ? 'AND b.salesman_id = $3' : '';
-    const { rows } = await client.query(`
+    const rows = await q(`
       SELECT b.*, s.name AS shop_name, s.area AS shop_area, u.name AS salesman_name, u.code AS salesman_code,
         COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) AS collected_amount,
         COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0) AS short_amount,

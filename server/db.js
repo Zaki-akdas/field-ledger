@@ -15,13 +15,15 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false },
-  // Supabase limits a project to 15 simultaneous direct sessions; the pool
-  // must stay under that or new connects fail with EMAXCONNSESSION. Vercel
-  // spawns many instances, so those pools are tiny. PGPOOL_MAX overrides.
-  max: Math.min(15, Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 3 : 8))),
+  // DATABASE_URL points at Supabase's transaction-mode pooler (port 6543),
+  // which multiplexes many client connections over a few backends. There is
+  // no per-session cap and no backend is pinned while a client idles, so a
+  // shared pool can serve any number of concurrent requests. Each instance
+  // still keeps its pool modest; PGPOOL_MAX overrides, Vercel stays tiny.
+  max: Math.min(25, Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 3 : 12))),
   idleTimeoutMillis: 30000,
-  // Fail fast when the database is unreachable (e.g. IPv6-only host from a
-  // host without IPv6) instead of hanging until the platform kills the request.
+  // Fail fast when the database is unreachable instead of hanging until the
+  // platform kills the request.
   connectionTimeoutMillis: 8000,
   query_timeout: 15000,
   statement_timeout: 15000,
@@ -34,28 +36,6 @@ pool.on('error', (err) => {
 /* ---------------------------------------------------------------- helpers --- */
 
 export const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
-
-/**
- * Request-scoped database client with RLS context.
- * Each request gets its own client from the pool, with session variables
- * set so PostgreSQL RLS policies can check who the user is.
- */
-export async function getRequestClient(user) {
-  const client = await pool.connect();
-  // Set RLS session variables — these persist for the transaction
-  if (user) {
-    await client.query('BEGIN');
-    await client.query(`SELECT set_config('app.current_user_id', $1, true)`, [String(user.id)]);
-    await client.query(`SELECT set_config('app.current_user_role', $1, true)`, [user.role || '']);
-    await client.query('COMMIT');
-  }
-  return client;
-}
-
-/** Release a request-scoped client. */
-export function releaseClient(client) {
-  if (client) client.release();
-}
 
 /** Convenience: run a query and return rows. */
 export async function q(sql, params = [], client = null) {
@@ -77,9 +57,15 @@ export async function qx(sql, params = [], client = null) {
 }
 
 /**
- * Run a set of queries inside a PostgreSQL transaction.
- * If user is provided, sets RLS session variables.
- * Usage: await tx(async (client) => { ... })
+ * Run a set of queries inside one PostgreSQL transaction with RLS context.
+ *
+ * This is the only place RLS session variables are set, and they are set
+ * transaction-locally (set_config is_local). That is deliberate: through the
+ * transaction-mode pooler a backend can be reassigned to another client the
+ * moment COMMIT runs, so context cannot outlive the transaction — which is
+ * exactly what makes this safe under heavy concurrency.
+ *
+ * Usage: await tx(async (client) => { ... }, req.user)
  */
 export async function tx(fn, user = null) {
   const client = await pool.connect();

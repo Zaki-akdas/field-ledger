@@ -125,6 +125,15 @@ half-succeeded request can never double-collect a payment. The queue is visible 
 Environment variables: `DATABASE_URL` (required), `DATABASE_SSL=false` (disable TLS for a local
 Postgres), `PORT`, `CORS_ORIGINS` (comma-separated, production), `PGPOOL_MAX` (DB pool size).
 
+**Connection model:** the app connects through a shared pool — there is **no per-request database
+session**. RLS context is applied per-transaction inside writes (`tx()`), which is the pattern the
+Supabase **transaction-mode pooler** supports: point `DATABASE_URL` at the pooler on **port 6543**
+(`postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:6543/postgres`) so concurrent
+requests share a few backends instead of exhausting the 15-session cap of port 5432. The realtime
+`LISTEN` listener needs a long-lived session, so it uses `REALTIME_DATABASE_URL` when set (the
+session-mode URL on port 5432, or the direct host); on plain local/CI Postgres just leave it unset
+and it falls back to `DATABASE_URL`.
+
 Attachment storage: `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` store invoice photos and
 collection screenshots in a private Supabase Storage bucket (default name `field-ledger`,
 override with `SUPABASE_STORAGE_BUCKET`). Without those keys files fall back to `server/uploads/`
@@ -149,9 +158,11 @@ Express app exported from `api/index.js` (serverless function). Push to `main` �
 
 1. Create a project on Vercel for this repo. Framework preset **Vite**, build command
    `npm run build`, output directory **client/dist**.
-2. Add the production environment variables in Vercel: `DATABASE_URL` (your Supabase connection
-   string), `PGPOOL_MAX=3` (serverless instances share the DB connection cap), and the storage
-   keys `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` so photo uploads survive cold starts.
+2. Add the production environment variables in Vercel: `DATABASE_URL` (your Supabase
+   **transaction-mode pooler** connection string on port **6543**), `PGPOOL_MAX=3` (serverless
+   instances keep tiny pools), and the storage keys `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
+   so photo uploads survive cold starts. (Realtime is off on Vercel, so no `REALTIME_DATABASE_URL`
+   is needed there.)
 3. Create a token: `vercel login && vercel tokens create`.
 4. Get the IDs: `vercel whoami` (username), then `vercel project inspect <name>` — note the
    **org id** (`org.id`) and **project id** (`id`).

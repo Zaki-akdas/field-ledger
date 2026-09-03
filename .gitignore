@@ -8,3 +8,6 @@ server/data/
 .env
 .env.*
 *.log
+
+# Vercel local link artifacts
+.vercel/

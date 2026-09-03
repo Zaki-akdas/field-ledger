@@ -19,6 +19,11 @@ export const pool = new Pool({
   // Supabase's connection cap isn't exhausted. PGPOOL_MAX overrides either way.
   max: Math.min(20, Number(process.env.PGPOOL_MAX || (process.env.VERCEL ? 3 : 20))),
   idleTimeoutMillis: 30000,
+  // Fail fast when the database is unreachable (e.g. IPv6-only host from a
+  // host without IPv6) instead of hanging until the platform kills the request.
+  connectionTimeoutMillis: 8000,
+  query_timeout: 15000,
+  statement_timeout: 15000,
 });
 
 pool.on('error', (err) => {

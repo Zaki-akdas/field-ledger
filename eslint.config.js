@@ -14,6 +14,7 @@ export default [
       'client/dist/**',
       'client/dist-smoke/**',
       'server/uploads/**',
+      '.vercel/**',
       'package-lock.json',
     ],
   },

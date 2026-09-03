@@ -18,6 +18,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const app = express();
 
+// Behind a reverse proxy (Vercel, Fly, nginx) the socket IP is the proxy's;
+// trust one hop so rate limiting keys on the real client IP.
+app.set('trust proxy', 1);
+
 // ── Security headers ───────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: false,       // Vite manages CSP for the SPA

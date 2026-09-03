@@ -224,6 +224,32 @@
   --tw-shadow-raise: 0 6px 20px rgba(0, 0, 0, 0.30);
 }
 
+/* Print — the salesman's End-day register becomes its own sheet. The portal
+   holds the same markup as the on-screen card; printing hides the whole app
+   (#root) and shows the portal in normal flow, so a long register paginates
+   cleanly and dark mode can't tint the paper. Colors are forced light. */
+#day-print-doc {
+  display: none;
+}
+
+@media print {
+  body.printing #root {
+    display: none !important;
+  }
+
+  body.printing #day-print-doc {
+    display: block !important;
+    color-scheme: light;
+    --color-ink: 24 34 51;
+    --color-ink-soft: 74 90 106;
+    --color-ink-faint: 124 139 153;
+    --color-paper: 255 255 255;
+    --color-surface: 255 255 255;
+    --color-line: 205 213 220;
+    --color-line-strong: 150 160 170;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

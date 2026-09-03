@@ -214,6 +214,7 @@ async function run() {
   t = text(field);
   check('Field → end day', /Today’s reconciliation|Day ended/.test(t), t.slice(0, 80));
   check('End day shows cash to deposit', /Cash to deposit/.test(t));
+  check('End-day register with print/export actions', /Day's collection report/i.test(t) && /Print/.test(t) && /Excel/.test(t) && /PDF/.test(t), t.slice(0, 90));
 
   console.log('\n── Console output');
   if (errors.length === 0) console.log('   (none)');

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, getToken } from '../lib/api.js';
 
 const IS_IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
 
-/* Names of every object URL minted, revoked on page unload. */
+/* Names of every object URL we minted, revoked on page unload. */
 const LIVE_URLS = new Set();
 const canBlob = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
 function onUnload() {
@@ -41,31 +41,108 @@ async function resolveObjectUrl(name) {
   return promise;
 }
 
+/* ── page-level photo gallery ───────────────────────────────────────
+ * Every image AttachmentPhoto on the page claims a slot in SLOTS at mount
+ * time, so the gallery always follows visual order (a photo's bytes may
+ * resolve in any order, but a slot is never reordered once claimed). Each
+ * slot fills in its URL when the bytes arrive; opening any photo raises a
+ * single lightbox that steps across the ready set (on-screen arrows plus
+ * ← / → / Esc), so a bill carrying several collection photos is browsable
+ * without closing and reopening. */
+const SLOTS = []; // { id, name, alt, url } — position = mount order
+let activeId = null;
+let photoSeq = 0;
+const photoSubs = new Set();
+function photoNotify() { for (const fn of photoSubs) fn(); }
+const photoList = () => SLOTS.filter((s) => s.url);
+function photoOpen(id) { if (id !== activeId) { activeId = id; photoNotify(); } }
+function photoClose() { if (activeId !== null) { activeId = null; photoNotify(); } }
+function photoStep(delta) {
+  const list = photoList();
+  if (activeId == null || list.length < 2) return;
+  const i = list.findIndex((p) => p.id === activeId);
+  if (i === -1) return;
+  const next = list[(i + delta + list.length) % list.length];
+  if (next && next.id !== activeId) photoOpen(next.id);
+}
+
 /**
  * Inline photo for a stored attachment. Non-image files (PDFs…) keep the old
- * "View attachment" link. Images render as a lazy thumbnail that opens a
- * lightbox with the full photo on click.
+ * "View attachment" link. Images render as a lazy thumbnail that opens the
+ * page gallery lightbox with the full photo on click.
  */
 export default function AttachmentPhoto({ name, className = '', alt = 'Attachment' }) {
   const [url, setUrl] = useState(null);
   const [failed, setFailed] = useState(false);
-  const [enlarged, setEnlarged] = useState(false);
+  const [, setTick] = useState(0); // re-render when the gallery set changes
+  const idRef = useRef(null);
 
   const isImage = IS_IMAGE.test(name || '');
 
+  // Claim the gallery slot once, at mount, in visual (mount) order. Releasing
+  // it on unmount is the only thing that ever moves it.
+  useEffect(() => {
+    if (!isImage || !canBlob) return undefined;
+    if (!idRef.current) idRef.current = `photo-${++photoSeq}`;
+    const id = idRef.current;
+    const slot = { id, name, alt, url: null };
+    SLOTS.push(slot);
+    const onChange = () => setTick((t) => t + 1);
+    photoSubs.add(onChange);
+    photoNotify(); // let the whole page see the new set/count
+    return () => {
+      photoSubs.delete(onChange);
+      const i = SLOTS.indexOf(slot);
+      if (i !== -1) SLOTS.splice(i, 1);
+      if (activeId === id) activeId = null;
+      photoNotify();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- slot position is fixed at first mount
+  }, [isImage]);
+
+  // Keep the slot's label in sync if props ever change (never reorders).
+  useEffect(() => {
+    if (!isImage || !canBlob || !idRef.current) return;
+    const slot = SLOTS.find((s) => s.id === idRef.current);
+    if (slot) { slot.name = name; slot.alt = alt; }
+  }, [isImage, name, alt]);
+
+  // Fetch the bytes; fill the slot URL in place when they arrive.
   useEffect(() => {
     if (!isImage || !canBlob) return undefined;
     let alive = true;
     setFailed(false);
     resolveObjectUrl(name)
-      .then((u) => { if (alive) setUrl(u); })
+      .then((u) => {
+        if (!alive) return;
+        setUrl(u);
+        const slot = SLOTS.find((s) => s.id === idRef.current);
+        if (slot && slot.url !== u) { slot.url = u; photoNotify(); }
+      })
       .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, [name, isImage]);
 
+  const list = photoList();
+  const isActive = !!idRef.current && activeId === idRef.current;
+  const index = isActive ? Math.max(0, list.findIndex((p) => p.id === idRef.current)) : 0;
+  const total = list.length;
+
+  // Keyboard: ← / → step through the page's photos, Esc closes.
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') photoClose();
+      else if (e.key === 'ArrowLeft') photoStep(-1);
+      else if (e.key === 'ArrowRight') photoStep(1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isActive]);
+
   const openLightbox = useCallback((e) => {
     if (e) e.preventDefault();
-    if (url) setEnlarged(true);
+    if (url && idRef.current) photoOpen(idRef.current);
   }, [url]);
 
   const openSignedTab = (e) => {
@@ -103,29 +180,52 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
         )}
       </button>
 
-      {enlarged && url && (
+      {isActive && url && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-4"
           role="dialog"
           aria-modal="true"
           aria-label={alt}
-          onClick={() => setEnlarged(false)}
+          onClick={photoClose}
         >
+          {total > 1 && (
+            <button
+              type="button"
+              aria-label="Previous photo"
+              onClick={(e) => { e.stopPropagation(); photoStep(-1); }}
+              className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-ink/60 text-[24px] leading-none text-paper hover:bg-ink/85"
+            >
+              ‹
+            </button>
+          )}
           <img
             src={url}
             alt={alt}
             className="max-h-[92vh] max-w-full rounded-lg object-contain shadow-raise"
             onClick={(e) => e.stopPropagation()}
           />
+          {total > 1 && (
+            <button
+              type="button"
+              aria-label="Next photo"
+              onClick={(e) => { e.stopPropagation(); photoStep(1); }}
+              className="absolute right-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-ink/60 text-[24px] leading-none text-paper hover:bg-ink/85"
+            >
+              ›
+            </button>
+          )}
           <button
             type="button"
             aria-label="Close"
-            onClick={() => setEnlarged(false)}
+            onClick={photoClose}
             className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink/60 text-[18px] text-paper hover:bg-ink/80"
           >
             ✕
           </button>
-          {name && <p className="absolute bottom-4 left-0 right-0 text-center text-[12px] text-paper/80">{name}</p>}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex flex-col items-center gap-0.5 bg-gradient-to-t from-ink/70 to-transparent px-4 pb-3 pt-12">
+            {name && <p className="max-w-full truncate text-[12px] text-paper/85">{name}</p>}
+            {total > 1 && <p className="num text-[12px] text-paper/60">{index + 1} of {total}</p>}
+          </div>
         </div>
       )}
     </>

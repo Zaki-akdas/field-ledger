@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { todayISO, money } from '../../lib/format.js';
-import { Btn, Chips, EmptyState, ErrorNote, Input, Loading, Money, StatusPill, cx } from '../../components/ui.jsx';
+import { Btn, Chips, EmptyState, ErrorNote, Input, Loading, StatusPill, cx } from '../../components/ui.jsx';
 import { FieldHeader, QueuedList } from '../../components/FieldLayout.jsx';
 
 const ORDER = { partial: 0, pending: 1, delivered: 2, cancelled: 3 };
@@ -42,9 +42,22 @@ export default function Bills({ mode = 'all' }) {
     };
   }, [data, collectOnly]);
 
-  const outstanding = bills
-    .filter((b) => b.status === 'pending' || b.status === 'partial')
-    .reduce((a, b) => a + (b.balance || 0), 0);
+  // Overall summary for the current scope (today or all history), before the
+  // status/search filters narrow the visible list. Cancelled bills are taken
+  // off the books, so they count only in the cancelled tally.
+  const summary = useMemo(() => {
+    const rows = (data?.bills || []).filter((b) => b.status !== 'cancelled');
+    const open = rows.filter((b) => b.status === 'pending' || b.status === 'partial');
+    return {
+      count: rows.length,
+      billed: rows.reduce((a, b) => a + Number(b.amount || 0), 0),
+      collected: rows.reduce((a, b) => a + Number(b.collected_amount || 0), 0),
+      outstanding: open.reduce((a, b) => a + Number(b.balance || 0), 0),
+      cancelled: (data?.bills || []).filter((b) => b.status === 'cancelled').length,
+    };
+  }, [data]);
+
+  const scopeLabel = scope === 'today' ? 'today' : 'overall';
 
   return (
     <div>
@@ -87,11 +100,34 @@ export default function Bills({ mode = 'all' }) {
         ]}
       />
 
-      {!collectOnly && counts.open > 0 && (
-        <p className="mb-3 text-[12.5px] text-ink-soft">
-          <Money value={outstanding} className="font-medium" /> outstanding across{' '}
-          <span className="num">{counts.open}</span> open {counts.open === 1 ? 'bill' : 'bills'}
-        </p>
+      {!collectOnly && !loading && (data?.bills || []).length > 0 && (
+        <div className="mb-3 grid grid-cols-3 gap-2 sm:gap-2.5" aria-label={`${scope === 'today' ? "Today's" : 'Overall'} summary`}>
+          <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">
+              {scope === 'today' ? "Today's" : 'Overall'} billed
+            </p>
+            <p className="num mt-1 text-[17px] leading-none font-semibold sm:text-[19px]">₹{money(summary.billed)}</p>
+            <p className="num mt-1.5 text-[10.5px] leading-tight text-ink-faint sm:text-[11.5px]">
+              {summary.count} {summary.count === 1 ? 'bill' : 'bills'}{summary.cancelled ? ` · ${summary.cancelled} cancelled` : ''}
+            </p>
+          </div>
+          <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">Collected</p>
+            <p className={`num mt-1 text-[17px] leading-none font-semibold sm:text-[19px] ${summary.collected > 0 ? 'text-settled' : ''}`}>
+              ₹{money(summary.collected)}
+            </p>
+            <p className="num mt-1.5 text-[10.5px] leading-tight text-ink-faint sm:text-[11.5px]">{scopeLabel}</p>
+          </div>
+          <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">Outstanding</p>
+            <p className={`num mt-1 text-[17px] leading-none font-semibold sm:text-[19px] ${summary.outstanding > 0.5 ? 'text-attention' : ''}`}>
+              ₹{money(summary.outstanding)}
+            </p>
+            <p className="num mt-1.5 text-[10.5px] leading-tight text-ink-faint sm:text-[11.5px]">
+              {counts.open} open{summary.outstanding <= 0.5 ? ' · all closed' : ''}
+            </p>
+          </div>
+        </div>
       )}
 
       <ErrorNote className="mb-3">{error?.message}</ErrorNote>

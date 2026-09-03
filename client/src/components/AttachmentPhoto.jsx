@@ -52,6 +52,12 @@ async function resolveObjectUrl(name) {
 const SLOTS = []; // { id, name, alt, url } — position = mount order
 let activeId = null;
 let photoSeq = 0;
+// One-shot guard: a drag/swipe that ends on the overlay is followed by a
+// synthetic click (browsers fire click after pointerup). That click must not
+// close the lightbox. Module-level because a step may hand the dialog to
+// another photo's instance before the click lands — the flag has to survive
+// the component swap.
+let overlayClickGuard = 0;
 const photoSubs = new Set();
 function photoNotify() { for (const fn of photoSubs) fn(); }
 const photoList = () => SLOTS.filter((s) => s.url);
@@ -67,6 +73,25 @@ function photoStep(delta) {
 }
 
 /**
+ * Warm the object-URL cache for the photos around the one on screen. Fetching
+ * is shared and idempotent (one request per file), so this only starts the
+ * network load for neighbours that haven't resolved yet — the owner component
+ * fills its slot and notifies when the bytes land, letting the counter and
+ * arrows grow while the lightbox is already open.
+ */
+const PRELOAD_RADIUS = 2;
+function preloadNeighbors(id) {
+  const i = SLOTS.findIndex((s) => s.id === id);
+  if (i === -1) return;
+  for (let step = 1; step <= PRELOAD_RADIUS; step += 1) {
+    const left = SLOTS[i - step];
+    const right = SLOTS[i + step];
+    if (left && !left.url) resolveObjectUrl(left.name).catch(() => {});
+    if (right && !right.url) resolveObjectUrl(right.name).catch(() => {});
+  }
+}
+
+/**
  * Inline photo for a stored attachment. Non-image files (PDFs…) keep the old
  * "View attachment" link. Images render as a lazy thumbnail that opens the
  * page gallery lightbox with the full photo on click.
@@ -76,6 +101,8 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
   const [failed, setFailed] = useState(false);
   const [, setTick] = useState(0); // re-render when the gallery set changes
   const idRef = useRef(null);
+  const imgRef = useRef(null);
+  const dragRef = useRef({ pointer: null, startX: 0, startY: 0, dx: 0, swiping: false });
 
   const isImage = IS_IMAGE.test(name || '');
 
@@ -128,9 +155,11 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
   const index = isActive ? Math.max(0, list.findIndex((p) => p.id === idRef.current)) : 0;
   const total = list.length;
 
-  // Keyboard: ← / → step through the page's photos, Esc closes.
+  // While the lightbox is open: warm the neighbours' bytes, and handle the
+  // keyboard (← / → / Esc).
   useEffect(() => {
     if (!isActive) return undefined;
+    if (idRef.current) preloadNeighbors(idRef.current);
     const onKey = (e) => {
       if (e.key === 'Escape') photoClose();
       else if (e.key === 'ArrowLeft') photoStep(-1);
@@ -139,6 +168,65 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isActive]);
+
+  // Touch/mouse swipe between photos: drag the picture sideways, release past
+  // a threshold to step (with the browser kept out of horizontal gestures via
+  // touch-action: pan-y).
+  const swipeDown = (e) => {
+    if (total < 2 || !url) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const d = dragRef.current;
+    d.pointer = e.pointerId;
+    d.startX = e.clientX ?? 0;
+    d.startY = e.clientY ?? 0;
+    d.dx = 0;
+    d.swiping = false;
+    try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* ok */ }
+  };
+  const swipeMove = (e) => {
+    const d = dragRef.current;
+    if (d.pointer !== e.pointerId) return;
+    const dx = (e.clientX ?? d.startX) - d.startX;
+    const dy = (e.clientY ?? d.startY) - d.startY;
+    if (!d.swiping) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 10) d.swiping = true;
+      else return; // vertical intent
+    }
+    d.dx = dx;
+    if (!imgRef.current) return;
+    imgRef.current.style.transition = 'none';
+    imgRef.current.style.transform = `translateX(${dx}px) scale(0.98)`;
+    imgRef.current.style.opacity = String(Math.max(0.35, 1 - Math.abs(dx) / 900));
+  };
+  const swipeUp = (e) => {
+    const d = dragRef.current;
+    if (d.pointer !== e.pointerId) return;
+    d.pointer = null;
+    if (d.swiping) {
+      const threshold = Math.max(60, Math.round((window.innerWidth || 360) * 0.18));
+      if (Math.abs(d.dx) >= threshold) {
+        // Step first, then arm the guard: the release's click must not close.
+        if (d.dx < 0) photoStep(1); else photoStep(-1);
+      } else if (imgRef.current) {
+        const img = imgRef.current;
+        img.style.transition = 'transform 200ms ease-out, opacity 200ms ease-out';
+        img.style.transform = '';
+        img.style.opacity = '';
+      }
+      overlayClickGuard = Date.now() + 600; // even a spring-back is followed by a click
+    }
+    d.swiping = false;
+    d.dx = 0;
+  };
+  const onOverlayClick = () => {
+    // Swallow exactly the click that follows a completed gesture. After the
+    // window passes, a plain tap on the backdrop closes as usual.
+    if (Date.now() < overlayClickGuard) { overlayClickGuard = 0; return; }
+    photoClose();
+  };
+  const stopDrag = (e) => { if (e) e.stopPropagation(); };
+
 
   const openLightbox = useCallback((e) => {
     if (e) e.preventDefault();
@@ -186,12 +274,18 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
           role="dialog"
           aria-modal="true"
           aria-label={alt}
-          onClick={photoClose}
+          onClick={onOverlayClick}
+          onPointerDown={swipeDown}
+          onPointerMove={swipeMove}
+          onPointerUp={swipeUp}
+          onPointerCancel={swipeUp}
+          style={{ touchAction: 'pan-y' }}
         >
           {total > 1 && (
             <button
               type="button"
               aria-label="Previous photo"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); photoStep(-1); }}
               className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-ink/60 text-[24px] leading-none text-paper hover:bg-ink/85"
             >
@@ -199,15 +293,19 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
             </button>
           )}
           <img
+            ref={imgRef}
             src={url}
             alt={alt}
-            className="max-h-[92vh] max-w-full rounded-lg object-contain shadow-raise"
+            className="max-h-[92vh] max-w-full select-none rounded-lg object-contain shadow-raise"
+            draggable={false}
+            onDragStart={stopDrag}
             onClick={(e) => e.stopPropagation()}
           />
           {total > 1 && (
             <button
               type="button"
               aria-label="Next photo"
+              onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); photoStep(1); }}
               className="absolute right-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-ink/60 text-[24px] leading-none text-paper hover:bg-ink/85"
             >
@@ -217,6 +315,7 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
           <button
             type="button"
             aria-label="Close"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={photoClose}
             className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink/60 text-[18px] text-paper hover:bg-ink/80"
           >

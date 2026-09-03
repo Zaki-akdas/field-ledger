@@ -1,0 +1,236 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --color-ink: 24 34 51;
+    --color-ink-soft: 74 90 106;
+    --color-ink-faint: 124 139 153;
+    --color-paper: 242 243 239;
+    --color-surface: 255 255 255;
+    --color-line: 218 223 227;
+    --color-line-strong: 195 203 210;
+    --color-settled: 30 127 92;
+    --color-settled-deep: 20 96 71;
+    --color-settled-tint: 231 242 237;
+    --color-attention: 176 71 44;
+    --color-attention-deep: 140 54 32;
+    --color-attention-tint: 251 238 234;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --color-ink: 226 232 240;
+    --color-ink-soft: 163 177 191;
+    --color-ink-faint: 100 116 139;
+    --color-paper: 15 23 42;
+    --color-surface: 30 41 59;
+    --color-line: 51 65 85;
+    --color-line-strong: 71 85 105;
+    --color-settled: 52 211 153;
+    --color-settled-deep: 16 185 129;
+    --color-settled-tint: 6 78 59;
+    --color-attention: 251 146 60;
+    --color-attention-deep: 234 88 12;
+    --color-attention-tint: 124 45 18;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-paper text-ink font-sans antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Numbers always tabular, always legible at a glance. */
+  .num {
+    @apply font-mono;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  *:focus-visible {
+    outline: 2px solid rgb(var(--color-ink));
+    outline-offset: 2px;
+    border-radius: 3px;
+  }
+
+  input,
+  select,
+  textarea {
+    @apply text-ink;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-ink-faint;
+  }
+
+  /* Kill the spinner arrows on money inputs — a keypad is better anyway. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply bg-surface border border-line rounded-xl;
+  }
+
+  .label {
+    @apply block text-[13px] font-medium text-ink-soft mb-1.5;
+  }
+
+  .input {
+    @apply w-full h-11 px-3 bg-surface border border-line rounded-lg text-[15px]
+           placeholder:text-ink-faint focus:border-ink focus:outline-none;
+  }
+
+  .input-mono {
+    @apply num tracking-tight;
+  }
+
+  .table-dense {
+    @apply w-full text-sm border-collapse;
+  }
+  .table-dense thead th {
+    @apply text-left text-[11px] uppercase tracking-wider text-ink-faint font-medium
+           px-3 py-2 border-b border-line whitespace-nowrap;
+  }
+  .table-dense tbody td {
+    @apply whitespace-nowrap px-3 py-2.5 border-b border-line/70 align-middle;
+  }
+  .table-dense tbody tr:hover {
+    @apply bg-paper/70;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+  .safe-top {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .snap-x-scroll {
+    scrollbar-width: none;
+  }
+  /* Minimum 44×44 touch targets for mobile */
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* Prevent text selection on interactive mobile elements */
+  .no-select {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* Prevent iOS bounce on specific containers */
+  .contain-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}
+
+/* Mobile-first responsive table cards */
+@media (max-width: 639px) {
+  .table-mobile-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .table-mobile-card thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+  }
+  .table-mobile-card tbody tr {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--tw-border-color, #DADFE3);
+    gap: 4px;
+  }
+  .table-mobile-card tbody tr:last-child {
+    border-bottom: none;
+  }
+  .table-mobile-card tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+    border-bottom: none;
+    white-space: normal;
+  }
+  .table-mobile-card tbody td::before {
+    content: attr(data-label);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #7C8B99;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+    margin-right: 12px;
+  }
+  .table-mobile-card tbody td:last-child::before {
+    display: none;
+  }
+}
+
+/* Dark mode adjustments */
+.dark .panel {
+  @apply border-line;
+}
+
+.dark .table-dense tbody tr:hover {
+  background-color: rgb(var(--color-surface) / 0.5);
+}
+
+.dark input[type='file']::-webkit-file-upload-button {
+  @apply bg-surface text-ink;
+}
+
+/* Dark mode shadow adjustments for better depth perception */
+.dark {
+  --tw-shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --tw-shadow-raise: 0 6px 20px rgba(0, 0, 0, 0.30);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

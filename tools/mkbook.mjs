@@ -1,0 +1,12 @@
+import ExcelJS from 'exceljs';
+const wb = new ExcelJS.Workbook();
+const ws = wb.addWorksheet('Dispatch');
+ws.addRow(['Sr No','Party Name','Bill No','Route / Area','Net Amount (Rs.)','Bill Date']);
+ws.addRow([1,'Sharma General Store','INV/2026/91001','Vijay Nagar',18400,'2026-09-02']);
+ws.addRow([2,'Gupta Kirana','INV/2026/91002','Palasia',7250,'2026-09-02']);
+ws.addRow([3,'Pooja Traders','INV/2026/91003','Khajrana',31260,'2026-09-02']);
+ws.addRow([4,'Missing invoice row','', 'Nowhere', 500,'2026-09-02']);
+ws.addRow([5,'Zero amount row','INV/2026/91005','Rau', 0,'2026-09-02']);
+ws.addRow([6,'Duplicate inside file','INV/2026/91001','Vijay Nagar',18400,'2026-09-02']);
+await wb.xlsx.writeFile('/tmp/dispatch-test.xlsx');
+console.log('workbook written');

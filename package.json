@@ -1,0 +1,50 @@
+{
+  "name": "field-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Field sales & cash reconciliation platform for FMCG distribution",
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --env-file-if-exists=.env server/index.js",
+    "dev:web": "vite",
+    "seed": "node --env-file-if-exists=.env server/seed.js --force",
+    "build": "vite build",
+    "start": "NODE_ENV=production node --env-file-if-exists=.env server/index.js",
+    "build:smoke": "vite build --config vite.smoke.config.js",
+    "smoke": "npm run build:smoke && node tools/smoke.mjs",
+    "check:classes": "node tools/classcheck.mjs",
+    "lint": "eslint .",
+    "db:init": "node --env-file-if-exists=.env tools/init-db.mjs",
+    "apitest": "node --env-file-if-exists=.env tools/apitest.mjs",
+    "verify": "npm run build && npm run check:classes && npm run smoke"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.0.13",
+    "@fontsource/ibm-plex-sans": "^5.0.13",
+    "@supabase/supabase-js": "^2.114.0",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "multer": "^1.4.5-lts.1",
+    "pdfkit": "^0.15.1",
+    "pg": "^8.23.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.27.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@vitejs/plugin-react": "^4.3.3",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.0",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.10"
+  }
+}

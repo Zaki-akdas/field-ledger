@@ -1,0 +1,10 @@
+node_modules/
+client/dist/
+client/dist-smoke/
+server/uploads/*
+!server/uploads/.gitkeep
+# Legacy SQLite demo DB + migration dumps — schema and seed regenerate these.
+server/data/
+.env
+.env.*
+*.log

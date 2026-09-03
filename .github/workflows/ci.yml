@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-build:
+    name: Lint · build · class check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Check Tailwind classes
+        run: npm run check:classes
+
+  tests:
+    name: API regression + UI smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ledger
+          POSTGRES_PASSWORD: ledger
+          POSTGRES_DB: ledger
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://ledger:ledger@localhost:5432/ledger
+      DATABASE_SSL: 'false'
+      PORT: '4000'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create schema
+        run: node tools/init-db.mjs
+
+      - name: Seed the demo ledger
+        run: node server/seed.js --force
+
+      - name: Start API server
+        run: |
+          node server/index.js > api.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:4000/api/health > /dev/null; then
+              echo "API is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "API failed to start"
+          cat api.log
+          exit 1
+
+      - name: API regression tests
+        run: node tools/apitest.mjs
+
+      - name: UI smoke test (jsdom)
+        run: npm run smoke
+
+      - name: Show API log on failure
+        if: failure()
+        run: cat api.log || true

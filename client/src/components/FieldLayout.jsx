@@ -50,6 +50,7 @@ export default function FieldLayout() {
   const billed = (data?.expected ?? 0) + (data?.cancelled?.amount ?? 0) + (data?.short?.amount ?? 0);
   const due = data?.pending?.amount ?? 0;
   const pendingCount = (data?.bills?.pending || 0) + (data?.bills?.partial || 0);
+  const deliveredCount = data?.bills?.delivered ?? 0;
   // A subtle green tick once everything on today's book has come in — only
   // when there actually is a book (an empty day never shows it).
   const allCollected = billed > 0 && collected >= billed - 0.5;
@@ -89,6 +90,8 @@ export default function FieldLayout() {
                 <>
                   billed <span className="font-medium text-ink">₹{money(billed)}</span>
                   {' · '}due <span className="font-medium text-ink">₹{money(due)}</span>
+                  {' · '}<span className={pendingCount > 0 ? 'text-attention-deep font-medium' : ''}>{pendingCount}</span> pending
+                  {' · '}<span className="font-medium">{deliveredCount}</span> delivered
                 </>
               )}
             </p>

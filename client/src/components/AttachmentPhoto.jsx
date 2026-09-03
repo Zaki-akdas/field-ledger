@@ -3,6 +3,22 @@ import { api, getToken } from '../lib/api.js';
 
 const IS_IMAGE = /\.(png|jpe?g|webp|gif|heic)$/i;
 
+/**
+ * Human filename for a saved photo: the friendly alt label ("Cash photo ·
+ * INV-001") slugged for the filesystem, keeping the real extension from the
+ * stored key. The stored name itself is a machine key ("1725…-a1b2c3.jpg").
+ */
+function saveFilename(name, alt) {
+  const extMatch = /\.(png|jpe?g|webp|gif|heic)$/i.exec(name || '');
+  const ext = (extMatch ? extMatch[0] : '.jpg').toLowerCase();
+  const stem = String(alt || name || 'photo')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64) || 'photo';
+  return `${stem}${ext}`;
+}
+
 /* Names of every object URL we minted, revoked on page unload. */
 const LIVE_URLS = new Set();
 const canBlob = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
@@ -233,6 +249,20 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
     if (url && idRef.current) photoOpen(idRef.current);
   }, [url]);
 
+  // Save the photo exactly as displayed: the blob object URL already holds the
+  // bytes on screen, so no re-signing or refetch is needed. The URL is shared
+  // with the visible image and the page cache, so it is not revoked here.
+  const savePhoto = (e) => {
+    if (e) e.stopPropagation();
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = saveFilename(name, alt);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
   const openSignedTab = (e) => {
     if (e) e.preventDefault();
     api.post('/attachments/sign', { name })
@@ -312,15 +342,28 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
               ›
             </button>
           )}
-          <button
-            type="button"
-            aria-label="Close"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={photoClose}
-            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-ink/60 text-[18px] text-paper hover:bg-ink/80"
-          >
-            ✕
-          </button>
+          <div className="absolute right-3 top-3 z-10 flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Save photo"
+              title="Save photo"
+              onPointerDown={stopDrag}
+              onClick={savePhoto}
+              className="flex h-9 items-center gap-1.5 rounded-full bg-ink/60 px-3 text-[13px] font-medium text-paper hover:bg-ink/80"
+            >
+              <span aria-hidden="true" className="text-[15px] leading-none">↓</span>
+              Save
+            </button>
+            <button
+              type="button"
+              aria-label="Close"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={photoClose}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-ink/60 text-[18px] text-paper hover:bg-ink/80"
+            >
+              ✕
+            </button>
+          </div>
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 flex flex-col items-center gap-0.5 bg-gradient-to-t from-ink/70 to-transparent px-4 pb-3 pt-12">
             {name && <p className="max-w-full truncate text-[12px] text-paper/85">{name}</p>}
             {total > 1 && <p className="num text-[12px] text-paper/60">{index + 1} of {total}</p>}

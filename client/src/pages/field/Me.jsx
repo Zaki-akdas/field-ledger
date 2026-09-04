@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApi, useTitle, useDarkMode } from '../../lib/hooks.js';
 import { useAuth, useSync } from '../../lib/context.jsx';
 import { todayISO, shiftISO, MODE_LABEL, rupees, dateLabel } from '../../lib/format.js';
-import { withBack } from '../../lib/fieldBack.js';
+import { originOf, originState } from '../../lib/fieldBack.js';
 import {
   Btn, Card, ErrorNote, Loading, SectionTitle, Segmented, Variance,
 } from '../../components/ui.jsx';
@@ -38,9 +38,11 @@ export default function Me() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  // Where the running-total header was tapped from; only known tabs are honored
-  // so a hand-edited ?back= can't forge a label or destination.
-  const backTo = new URLSearchParams(location.search).get('back');
+  // Where the running-total header was tapped from — carried in router state
+  // (a legacy ?back= URL still works via originOf). Only the two working tabs
+  // get a labeled chip; anything else can't forge one.
+  const origin = originOf(location);
+  const backTo = origin === '/field/bills' || origin === '/field/collect' ? origin : null;
   const backLabel = backTo === '/field/bills' ? 'Bills' : backTo === '/field/collect' ? 'Collect' : null;
   const { dark, toggle: toggleDark } = useDarkMode();
   const [days, setDays] = useState('0');
@@ -237,7 +239,7 @@ export default function Me() {
             ) : (
               <div className="overflow-hidden rounded-xl border border-line bg-surface">
                 {data.pending_list.slice(0, 12).map((b) => (
-                  <Link key={b.id} to={withBack(`/field/bills/${b.id}`, '/field/me')} className="flex items-center gap-3 border-b border-line px-3.5 py-3.5 last:border-0 active:bg-paper min-h-[52px]">
+                  <Link key={b.id} to={`/field/bills/${b.id}`} state={originState('/field/me')} className="flex items-center gap-3 border-b border-line px-3.5 py-3.5 last:border-0 active:bg-paper min-h-[52px]">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[14.5px] font-medium">{b.shop_name}</p>
                       <p className="num truncate text-[11.5px] text-ink-faint">{b.invoice_no}</p>

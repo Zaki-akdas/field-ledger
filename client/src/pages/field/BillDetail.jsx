@@ -4,7 +4,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useAuth, useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money, MODE_LABEL, dateLabel } from '../../lib/format.js';
-import { readBack, withBack } from '../../lib/fieldBack.js';
+import { originOf, originState } from '../../lib/fieldBack.js';
 import {
   Btn, Card, ErrorNote, KeyValue, Loading, Money, Pill, SectionTitle, Sheet, StatusPill,
 } from '../../components/ui.jsx';
@@ -18,7 +18,9 @@ export default function BillDetail() {
   const location = useLocation();
   // The tab the salesman tapped this bill open from — Bills list, Collect
   // list, or My numbers — so Back returns there instead of a fixed page.
-  const back = readBack(location.search);
+  // Carried in router state (not the URL); a ?back= from older builds still
+  // works via originOf's fallback.
+  const back = originOf(location);
   const { push } = useToast();
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
@@ -47,7 +49,7 @@ export default function BillDetail() {
 
   return (
     <div>
-      <FieldHeader title="Bill" back={back ?? '/field/bills'} />
+      <FieldHeader title="Bill" back={back ?? '/field/bills'} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[15.5px] font-medium">{bill.invoice_no}</p>
@@ -150,13 +152,13 @@ export default function BillDetail() {
             variant="primary"
             size="lg"
             block
-            onClick={() => navigate(withBack(`/field/bills/${bill.id}/collect`, back))}
+            onClick={() => navigate(`/field/bills/${bill.id}/collect`, { state: originState(back) })}
           >
             {bill.collected_amount > 0 ? 'Collect the balance' : 'Deliver & collect'}
           </Btn>
           <div className="grid grid-cols-2 gap-2.5">
-            <Btn size="lg" onClick={() => navigate(withBack(`/field/bills/${bill.id}/shortage`, back))}>Report shortage</Btn>
-            <Btn variant="outlineDanger" size="lg" onClick={() => navigate(withBack(`/field/bills/${bill.id}/cancel`, back))}>
+            <Btn size="lg" onClick={() => navigate(`/field/bills/${bill.id}/shortage`, { state: originState(back) })}>Report shortage</Btn>
+            <Btn variant="outlineDanger" size="lg" onClick={() => navigate(`/field/bills/${bill.id}/cancel`, { state: originState(back) })}>
               Mark cancelled
             </Btn>
           </div>

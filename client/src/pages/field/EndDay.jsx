@@ -5,7 +5,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useAuth, useToast } from '../../lib/context.jsx';
 import { api, downloadExport, shareExport } from '../../lib/api.js';
 import { todayISO, money, MODE_LABEL, dateLabel } from '../../lib/format.js';
-import { readBack } from '../../lib/fieldBack.js';
+import { originOf } from '../../lib/fieldBack.js';
 import {
   Btn, Card, ErrorNote, Field, KeyValue, Loading, Money, SectionTitle, Textarea, Variance,
 } from '../../components/ui.jsx';
@@ -19,9 +19,10 @@ export default function EndDay() {
   useTitle('End day');
   const navigate = useNavigate();
   const location = useLocation();
-  // Where “End day” was tapped from — My numbers in practice; honors a
-  // ?back= origin when a future entry point points here from another tab.
-  const back = readBack(location.search);
+  // Where “End day” was tapped from — My numbers in practice; an origin in
+  // router state (or a legacy ?back= URL) is honored when another entry point
+  // points here.
+  const back = originOf(location);
   const { user } = useAuth();
   const { push } = useToast();
   const today = todayISO();
@@ -185,7 +186,7 @@ export default function EndDay() {
 
   return (
     <div className="pb-10">
-      <FieldHeader title="End day" back={back ?? '/field/me'} />
+      <FieldHeader title="End day" back={back ?? '/field/me'} backState={back ? { back } : undefined} />
 
       {ended ? (
         <Card className="border-settled/30 bg-settled-tint p-5 text-center">

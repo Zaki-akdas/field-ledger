@@ -1,20 +1,36 @@
 /**
  * Origin-aware back navigation for the field app.
  *
- * Pages deep in a bill or report remember where the salesman tapped from by
- * carrying a ?back=<tab path> query param, so their back control returns to
- * that tab instead of a hardcoded one. Only the fixed list below is honored —
- * a hand-edited ?back= can't forge where the back button goes.
+ * Deep pages remember where the salesman tapped from by carrying the origin
+ * tab in react-router location state (state.back), so their back control
+ * returns to that tab without cluttering the URL with ?back= query params.
+ * Only the fixed list below is honored — a hand-forged value can't point the
+ * back button anywhere else. A legacy ?back= query param is still read as a
+ * fallback, so links made by older builds or saved bookmarks keep working.
  */
 const VALID_BACK = new Set(['/field/bills', '/field/collect', '/field/me', '/field/start']);
 
-/** Decode a ?back= origin from a location search string; null when absent or not a known tab. */
-export function readBack(search) {
-  const raw = new URLSearchParams(search).get('back');
-  return raw && VALID_BACK.has(raw) ? raw : null;
+/** Return value when it names a known tab; otherwise null. */
+export function validBack(value) {
+  return value && VALID_BACK.has(value) ? value : null;
 }
 
-/** Append ?back=<tab> to a path when tab is a known tab path; otherwise return path unchanged. */
-export function withBack(path, tab) {
-  return tab && VALID_BACK.has(tab) ? `${path}?back=${encodeURIComponent(tab)}` : path;
+/** Origin from a react-router location: state.back first, legacy ?back= as fallback. */
+export function originOf(location) {
+  if (!location) return null;
+  const fromState = validBack(location.state?.back);
+  if (fromState) return fromState;
+  const raw = new URLSearchParams(location.search).get('back');
+  return validBack(raw);
+}
+
+/**
+ * The react-router state object carrying the origin (pass to the `state` prop
+ * of Link/NavLink, or as `navigate(path, { state })`). Returns undefined for
+ * an unknown origin so callers can pass it straight through — react-router
+ * ignores undefined state.
+ */
+export function originState(tab) {
+  const origin = validBack(tab);
+  return origin ? { back: origin } : undefined;
 }

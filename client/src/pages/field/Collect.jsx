@@ -4,7 +4,7 @@ import { useApi, useTitle, fileToCompressedDataUrl, newId } from '../../lib/hook
 import { useSync, useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money } from '../../lib/format.js';
-import { readBack, withBack } from '../../lib/fieldBack.js';
+import { originOf } from '../../lib/fieldBack.js';
 import DenomGrid, { decompose, totalOf } from '../../components/DenomGrid.jsx';
 import {
   Btn, Card, ErrorNote, Field, Input, Loading, Select, cx,
@@ -39,7 +39,7 @@ export default function Collect() {
   const location = useLocation();
   // Where the salesman tapped the bill from — return there after saving,
   // and keep the origin on the bill link when backing out to the detail.
-  const back = readBack(location.search);
+  const back = originOf(location);
   const { push } = useToast();
   const { online, save } = useSync();
   const { data, loading } = useApi(`/bills/${id}`);
@@ -130,7 +130,7 @@ export default function Collect() {
 
   return (
     <div className="pb-40">
-      <FieldHeader title="Collect" back={withBack(`/field/bills/${id}`, back)} />
+      <FieldHeader title="Collect" back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[13.5px] text-ink-soft">{bill.invoice_no}</p>

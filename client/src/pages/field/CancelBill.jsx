@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApi, useTitle, newId } from '../../lib/hooks.js';
 import { useSync, useToast } from '../../lib/context.jsx';
 import { money } from '../../lib/format.js';
-import { readBack, withBack } from '../../lib/fieldBack.js';
+import { originOf, originState } from '../../lib/fieldBack.js';
 import { Btn, Card, ErrorNote, Field, Loading, Select, Textarea } from '../../components/ui.jsx';
 import { FieldHeader } from '../../components/FieldLayout.jsx';
 
@@ -23,7 +23,7 @@ export default function CancelBill() {
   useTitle('Cancel bill');
   const navigate = useNavigate();
   const location = useLocation();
-  const back = readBack(location.search);
+  const back = originOf(location);
   const { push } = useToast();
   const { save } = useSync();
   const { data, loading } = useApi(`/bills/${id}`);
@@ -61,7 +61,7 @@ export default function CancelBill() {
 
   return (
     <div className="pb-10">
-      <FieldHeader title="Mark cancelled" back={withBack(`/field/bills/${id}`, back)} />
+      <FieldHeader title="Mark cancelled" back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[15px]">{bill.invoice_no}</p>
@@ -88,7 +88,7 @@ export default function CancelBill() {
         <Btn variant="danger" size="lg" block disabled={busy} onClick={submit}>
           {busy ? 'Cancelling…' : 'Mark cancelled'}
         </Btn>
-        <Btn variant="ghost" block onClick={() => navigate(withBack(`/field/bills/${id}`, back))}>Keep this bill open</Btn>
+        <Btn variant="ghost" block onClick={() => navigate(`/field/bills/${id}`, { state: originState(back) })}>Keep this bill open</Btn>
       </div>
     </div>
   );

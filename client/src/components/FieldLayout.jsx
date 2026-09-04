@@ -68,7 +68,8 @@ export default function FieldLayout() {
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur safe-top">
         <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
           <NavLink
-            to={originTab ? { pathname: '/field/me', search: `?back=${encodeURIComponent(originTab)}` } : '/field/me'}
+            to="/field/me"
+            state={originTab ? { back: originTab } : undefined}
             aria-label="My numbers — full day breakdown"
             title="My numbers — full day breakdown"
             className="group min-w-0 block rounded-lg px-0.5 py-0.5 -ml-0.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink active:opacity-70"
@@ -205,14 +206,17 @@ export default function FieldLayout() {
   );
 }
 
-export function FieldHeader({ title, back, right }) {
+export function FieldHeader({ title, back, backState, right }) {
   return (
     <div className="mb-4 flex items-center gap-3">
       {back && (
         // Returning replaces the deep page in history — pressing browser Back
         // afterwards goes on, instead of looping back into the screen just left.
+        // backState carries the origin (location.state) through the link so the
+        // destination still knows where the salesman came from.
         <NavLink
           to={back}
+          state={backState}
           replace
           aria-label="Back"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft hover:text-ink"

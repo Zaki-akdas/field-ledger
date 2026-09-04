@@ -336,7 +336,7 @@ async function main() {
   const { tx } = await import('../server/db.js');
   const { deleteFile } = await import('../server/storage.js');
   const removed = await tx(async (client) => {
-    const { rows: bills } = await client.query("SELECT id FROM bills WHERE invoice_no LIKE 'INV/TEST/%' OR invoice_no LIKE 'IN-PDFTEST/%'");
+    const { rows: bills } = await client.query("SELECT id FROM bills WHERE invoice_no LIKE 'INV/TEST/%' OR invoice_no LIKE 'IN-PDFTEST-%'");
     await client.query("DELETE FROM collections WHERE client_id LIKE 'test-%'");
     for (const { id } of bills) {
       await client.query('DELETE FROM collections WHERE bill_id = $1', [id]);

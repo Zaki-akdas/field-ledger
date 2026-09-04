@@ -1,6 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -45,13 +45,49 @@ if (isProduction && ALLOWED_ORIGINS.length > 0) {
   });
 }
 
-// ── Rate limiting ──────────────────────────────────────────────────────
-const authLimiter = rateLimit({
+// ── Login rate limiting ────────────────────────────────────────────────
+// Only failed attempts consume the failure budgets (skipSuccessfulRequests),
+// so legitimate traffic never trips a lockout: a whole office signing in from
+// one shared NAT, app boots that revalidate the token (never through here —
+// /auth/me is not login-throttled), or a test loop replaying the same demo
+// account. Brute force is throttled four ways:
+//   • per account per IP   — a typo'd password at one desk (max 15)
+//   • per account, all IPs — distributed guessing of one code (max 60)
+//   • per IP, all accounts — spraying many codes from one network (max 200)
+//   • per IP, any attempt  — runaway scripts, success or failure (max 300)
+const loginCode = (req) => String((req.body || {}).code || '').trim().toLowerCase();
+const loginCodeIpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
-  message: { error: 'Too many login attempts. Please try again in 15 minutes.' },
+  max: 15,
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip)}:${loginCode(req)}`,
+  message: { error: 'Too many failed sign-in attempts for this code. Please try again in 15 minutes.' },
+});
+const loginCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `code:${loginCode(req)}`,
+  message: { error: 'Too many failed sign-in attempts for this code. Please try again in 15 minutes.' },
+});
+const loginIpLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many failed sign-in attempts from this network. Please try again in 15 minutes.' },
+});
+const loginAttemptLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many sign-in attempts. Please try again in 15 minutes.' },
 });
 
 const apiLimiter = rateLimit({
@@ -88,7 +124,9 @@ app.use((req, res, next) => {
 // ── Routes ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 app.use('/api/realtime', realtimeRouter);
-app.use('/api/auth', authLimiter, authRouter);
+// Only the pre-auth login route is throttled — see the limiters above.
+app.use('/api/auth/login', loginAttemptLimiter, loginCodeIpLimiter, loginCodeLimiter, loginIpLimiter);
+app.use('/api/auth', authRouter);
 app.use('/api', apiLimiter, fieldRouter);
 app.use('/api/admin', apiLimiter, adminRouter);
 app.use('/api/sync', apiLimiter, syncRouter);

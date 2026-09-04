@@ -53,6 +53,11 @@ export function signUserToken(user) {
     role: user.role,
     iat: now,
     exp: now + JWT_TTL_S,
+    // Random per-token id: two sign-ins of the same user within one second
+    // would otherwise mint byte-identical JWTs (iat is second-granular and
+    // the signature is deterministic), and the second sessions insert would
+    // collide on the primary key and fail the login.
+    jti: crypto.randomUUID(),
   }));
   const sig = crypto.createHmac('sha256', jwtSecret())
     .update(`${header}.${payload}`)

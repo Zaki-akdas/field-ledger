@@ -52,6 +52,24 @@ async function main() {
   const bad = await login('admin', 'wrong-password');
   check('Wrong password is rejected', bad.status === 401, `got ${bad.status}`);
 
+  // Failure budgets must never lock out a correct password: a typo burst
+  // trips the per-code cap (429s from the 15th), then the right password
+  // still succeeds and its success resets the code's budget (fresh typo
+  // gets a plain 401 again, not a 429).
+  const burst = [];
+  for (let i = 0; i < 16; i++) burst.push((await login('admin', 'wrong-password')).status);
+  // The per-code cap (15 failures/15 min) trips somewhere inside this burst
+  // — the exact index depends on how many failures the checks above already
+  // recorded for this code. Before it trips everything is a 401; after, a 429.
+  const trip = burst.indexOf(429);
+  check('Typo burst trips the per-code cap',
+    trip >= 12 && trip <= 15 && burst.slice(0, trip).every((s) => s === 401) && burst.slice(trip).every((s) => s === 429),
+    JSON.stringify(burst));
+  const midLockout = await login('admin', 'admin123');
+  check('Correct password succeeds mid-lockout', midLockout.status === 200, `got ${midLockout.status}`);
+  const afterReset = await login('admin', 'wrong-password');
+  check('Successful sign-in resets the code failure budget', afterReset.status === 401, `got ${afterReset.status}`);
+
   const noToken = await call('GET', '/bills');
   check('Missing token is rejected', noToken.status === 401, `got ${noToken.status}`);
 

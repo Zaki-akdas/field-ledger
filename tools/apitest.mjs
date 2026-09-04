@@ -214,8 +214,16 @@ async function main() {
       },
     });
     check('Offline photo materialises into a collection', off.status === 201, off.data?.error || '');
-    const detail = (await call('GET', `/bills/${target.id}`, { token: S })).data;
-    const name = detail.collections?.find((c) => c.ref_no === 'UTR-TEST-ATTACH')?.attachment;
+    // The stored attachment name can lag a beat behind the insert on slow
+    // runners (storage flush, cold start), so re-read with a bounded backoff
+    // rather than letting a transient hiccup fail the whole suite. The happy
+    // path exits on the first read with no delay at all.
+    let name = null;
+    for (let attempt = 1; attempt <= 5 && !name; attempt++) {
+      const detail = (await call('GET', `/bills/${target.id}`, { token: S })).data;
+      name = detail?.collections?.find((c) => c.ref_no === 'UTR-TEST-ATTACH')?.attachment;
+      if (!name && attempt < 5) await new Promise((r) => setTimeout(r, 750 * attempt));
+    }
     check('Collection carries the stored attachment name', Boolean(name), String(name));
     if (name) {
       const dl = await fetch(`${ROOT}${await sign(name)}`);

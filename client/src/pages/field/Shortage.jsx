@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApi, useTitle, newId } from '../../lib/hooks.js';
 import { useSync, useToast } from '../../lib/context.jsx';
 import { money, money2 } from '../../lib/format.js';
+import { readBack, withBack } from '../../lib/fieldBack.js';
 import { Btn, Card, ErrorNote, Field, Input, Loading, Select, cx } from '../../components/ui.jsx';
 import { FieldHeader } from '../../components/FieldLayout.jsx';
 
@@ -22,6 +23,8 @@ export default function Shortage() {
   const { id } = useParams();
   useTitle('Report shortage');
   const navigate = useNavigate();
+  const location = useLocation();
+  const back = readBack(location.search);
   const { push } = useToast();
   const { save } = useSync();
   const { data, loading } = useApi(`/bills/${id}`);
@@ -64,7 +67,7 @@ export default function Shortage() {
       push(result.queued
         ? 'No signal — shortage saved on this phone. It will sync on its own.'
         : `Shortage reported — ₹${money(total)} off ${bill?.invoice_no}.`, 'success');
-      navigate(`/field/bills/${id}`);
+      navigate(withBack(`/field/bills/${id}`, back));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -77,7 +80,7 @@ export default function Shortage() {
 
   return (
     <div className="pb-36">
-      <FieldHeader title="Report shortage" back={`/field/bills/${id}`} />
+      <FieldHeader title="Report shortage" back={withBack(`/field/bills/${id}`, back)} />
 
       <Card className="p-4">
         <p className="num text-[13.5px] text-ink-soft">{bill.invoice_no} · {bill.shop_name}</p>

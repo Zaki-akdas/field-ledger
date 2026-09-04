@@ -125,10 +125,13 @@ async function run() {
   check('Login screen renders', /Sign in/.test(t) && /Field Ledger/.test(t), t.slice(0, 80));
 
   await login(admin, 'admin', 'admin123');
+  // Reconciliation over the remote database is ~30 sequential queries; it can
+  // outlive the fixed login sleep, so poll for it like every later page.
+  const rec = await waitForText(admin, 'Variance', 30000);
   t = text(admin);
-  check('Admin lands on reconciliation', /Expected/.test(t) && /Variance/.test(t), t.slice(0, 100));
-  check('Hero shows rupee figures', /₹/.test(t));
-  check('Salesman-wise table present', /Salesman-wise/.test(t));
+  check('Admin lands on reconciliation', rec && /Expected/.test(t) && /Variance/.test(t), t.slice(0, 100));
+  check('Hero shows rupee figures', rec && /₹/.test(t));
+  check('Salesman-wise table present', rec && /Salesman-wise/.test(t));
 
   for (const [label, needle] of [
     ['Collection report', 'Grand total'],
@@ -173,6 +176,8 @@ async function run() {
     await wait(2800);
     t = text(field);
     check('Field → bill detail', /Expected/.test(t) && /Collected/.test(t), t.slice(0, 80));
+    const detailBack = field.window.document.querySelector('a[aria-label="Back"]')?.getAttribute('href');
+    check('Bill detail back returns to the Bills tab it came from', detailBack === '/field/bills', detailBack || '');
 
     const collect = [...field.window.document.querySelectorAll('button')]
       .find((b) => /Deliver & collect|Collect the balance/.test(b.textContent || ''));
@@ -213,6 +218,8 @@ async function run() {
   await click(field, 'End day');
   t = text(field);
   check('Field → end day', /Today’s reconciliation|Day ended/.test(t), t.slice(0, 80));
+  const endBack = field.window.document.querySelector('a[aria-label="Back"]')?.getAttribute('href');
+  check('End-day back returns to My numbers', endBack === '/field/me', endBack || '');
   check('End day shows cash to deposit', /Cash to deposit/.test(t));
   check('End-day register with share/print/export actions', /Day's collection report/i.test(t) && /Share/.test(t) && /Print/.test(t) && /Excel/.test(t) && /PDF/.test(t), t.slice(0, 90));
 

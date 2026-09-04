@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useAuth, useToast } from '../../lib/context.jsx';
 import { api, downloadExport, shareExport } from '../../lib/api.js';
 import { todayISO, money, MODE_LABEL, dateLabel } from '../../lib/format.js';
+import { readBack } from '../../lib/fieldBack.js';
 import {
   Btn, Card, ErrorNote, Field, KeyValue, Loading, Money, SectionTitle, Textarea, Variance,
 } from '../../components/ui.jsx';
@@ -17,6 +18,10 @@ const byInvoice = (a, b) => (a.invoice_no < b.invoice_no ? -1 : a.invoice_no > b
 export default function EndDay() {
   useTitle('End day');
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where “End day” was tapped from — My numbers in practice; honors a
+  // ?back= origin when a future entry point points here from another tab.
+  const back = readBack(location.search);
   const { user } = useAuth();
   const { push } = useToast();
   const today = todayISO();
@@ -180,7 +185,7 @@ export default function EndDay() {
 
   return (
     <div className="pb-10">
-      <FieldHeader title="End day" back="/field/me" />
+      <FieldHeader title="End day" back={back ?? '/field/me'} />
 
       {ended ? (
         <Card className="border-settled/30 bg-settled-tint p-5 text-center">
@@ -291,7 +296,7 @@ export default function EndDay() {
             <Btn variant="primary" size="lg" block disabled={busy} onClick={end}>
               {busy ? 'Closing…' : 'End day'}
             </Btn>
-            <Btn variant="ghost" block onClick={() => navigate('/field/me')}>Not yet</Btn>
+            <Btn variant="ghost" block onClick={() => navigate(back ?? '/field/me')}>Not yet</Btn>
           </div>
         </>
       )}

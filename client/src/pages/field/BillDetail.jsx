@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useAuth, useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money, MODE_LABEL, dateLabel } from '../../lib/format.js';
+import { readBack, withBack } from '../../lib/fieldBack.js';
 import {
   Btn, Card, ErrorNote, KeyValue, Loading, Money, Pill, SectionTitle, Sheet, StatusPill,
 } from '../../components/ui.jsx';
@@ -14,6 +15,10 @@ export default function BillDetail() {
   const { id } = useParams();
   useTitle('Bill');
   const navigate = useNavigate();
+  const location = useLocation();
+  // The tab the salesman tapped this bill open from — Bills list, Collect
+  // list, or My numbers — so Back returns there instead of a fixed page.
+  const back = readBack(location.search);
   const { push } = useToast();
   const { user } = useAuth();
   const [busy, setBusy] = useState(false);
@@ -42,7 +47,7 @@ export default function BillDetail() {
 
   return (
     <div>
-      <FieldHeader title="Bill" back="/field/bills" />
+      <FieldHeader title="Bill" back={back ?? '/field/bills'} />
 
       <Card className="p-4">
         <p className="num text-[15.5px] font-medium">{bill.invoice_no}</p>
@@ -145,13 +150,13 @@ export default function BillDetail() {
             variant="primary"
             size="lg"
             block
-            onClick={() => navigate(`/field/bills/${bill.id}/collect`)}
+            onClick={() => navigate(withBack(`/field/bills/${bill.id}/collect`, back))}
           >
             {bill.collected_amount > 0 ? 'Collect the balance' : 'Deliver & collect'}
           </Btn>
           <div className="grid grid-cols-2 gap-2.5">
-            <Btn size="lg" onClick={() => navigate(`/field/bills/${bill.id}/shortage`)}>Report shortage</Btn>
-            <Btn variant="outlineDanger" size="lg" onClick={() => navigate(`/field/bills/${bill.id}/cancel`)}>
+            <Btn size="lg" onClick={() => navigate(withBack(`/field/bills/${bill.id}/shortage`, back))}>Report shortage</Btn>
+            <Btn variant="outlineDanger" size="lg" onClick={() => navigate(withBack(`/field/bills/${bill.id}/cancel`, back))}>
               Mark cancelled
             </Btn>
           </div>

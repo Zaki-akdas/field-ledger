@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { todayISO, money } from '../../lib/format.js';
+import { withBack } from '../../lib/fieldBack.js';
 import { Btn, Chips, EmptyState, ErrorNote, Input, Loading, StatusPill, cx } from '../../components/ui.jsx';
 import { FieldHeader, QueuedList } from '../../components/FieldLayout.jsx';
 
@@ -145,7 +146,7 @@ export default function Bills({ mode = 'all' }) {
           {bills.map((b) => (
             <Link
               key={b.id}
-              to={`/field/bills/${b.id}`}
+              to={withBack(`/field/bills/${b.id}`, collectOnly ? '/field/collect' : '/field/bills')}
               className="flex items-center gap-3 border-b border-line px-3.5 py-3.5 last:border-0 active:bg-paper min-h-[60px]"
             >
               <div className="min-w-0 flex-1">

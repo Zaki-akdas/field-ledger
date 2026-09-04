@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApi, useTitle, fileToCompressedDataUrl, newId } from '../../lib/hooks.js';
 import { useSync, useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money } from '../../lib/format.js';
+import { readBack, withBack } from '../../lib/fieldBack.js';
 import DenomGrid, { decompose, totalOf } from '../../components/DenomGrid.jsx';
 import {
   Btn, Card, ErrorNote, Field, Input, Loading, Select, cx,
@@ -35,6 +36,10 @@ export default function Collect() {
   const { id } = useParams();
   useTitle('Collect');
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where the salesman tapped the bill from — return there after saving,
+  // and keep the origin on the bill link when backing out to the detail.
+  const back = readBack(location.search);
   const { push } = useToast();
   const { online, save } = useSync();
   const { data, loading } = useApi(`/bills/${id}`);
@@ -110,7 +115,7 @@ export default function Collect() {
       } else {
         push(`Collection saved — ₹${money(total)} against ${bill?.invoice_no}.`, 'success');
       }
-      navigate('/field/collect');
+      navigate(back ?? '/field/collect');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -125,7 +130,7 @@ export default function Collect() {
 
   return (
     <div className="pb-40">
-      <FieldHeader title="Collect" back={`/field/bills/${id}`} />
+      <FieldHeader title="Collect" back={withBack(`/field/bills/${id}`, back)} />
 
       <Card className="p-4">
         <p className="num text-[13.5px] text-ink-soft">{bill.invoice_no}</p>

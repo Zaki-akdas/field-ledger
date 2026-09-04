@@ -100,7 +100,9 @@ export default function Me() {
         <p className="num text-[13px] text-ink-soft">{user?.code} · {user?.phone}</p>
       </div>
 
-      <StepRail steps={STEPS} current={step} onStep={(to) => navigate(to)} className="mb-5" />
+      {/* End day is the only step with a back control — pass this page as its
+          origin so it labels and returns here explicitly, not via fallback. */}
+      <StepRail steps={STEPS} current={step} onStep={(to) => navigate(to, to === '/field/end' ? { state: originState('/field/me') } : undefined)} className="mb-5" />
 
       <Segmented className="mb-4" value={days} onChange={setDays} options={RANGES} />
 
@@ -258,7 +260,7 @@ export default function Me() {
           </div>
 
           <div className="mt-6 space-y-2.5">
-            <Link to="/field/end"><Btn variant="primary" size="lg" block>End day</Btn></Link>
+            <Link to="/field/end" state={originState('/field/me')}><Btn variant="primary" size="lg" block>End day</Btn></Link>
             <Link to="/field/upload"><Btn size="lg" block>Add bills</Btn></Link>
           </div>
 

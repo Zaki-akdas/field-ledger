@@ -63,14 +63,14 @@ export default function Upload() {
           }`}
         >
           <p className="text-[15px] font-medium">Drop the dispatch sheet here</p>
-          <p className="mt-1 text-[13px] text-ink-soft">Excel or CSV · Invoice No, Customer, Area, Amount, Date</p>
+          <p className="mt-1 text-[13px] text-ink-soft">Excel, CSV or a CO-SHIP PDF · Invoice No, Customer, Area, Amount, Date</p>
           <div className="mt-4 flex justify-center gap-2">
             <Btn variant="primary" size="sm" onClick={() => fileRef.current?.click()} disabled={busy}>
               {busy ? <Spinner /> : null} Choose file
             </Btn>
             <Btn size="sm" onClick={downloadTemplate}>Get the template</Btn>
           </div>
-          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(e) => run(e.target.files?.[0])} />
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv,.pdf" className="hidden" onChange={(e) => run(e.target.files?.[0])} />
         </div>
       </Card>
 

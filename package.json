@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Field sales & cash reconciliation platform for FMCG distribution",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -n API,WEB -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --env-file-if-exists=.env server/index.js",
@@ -35,7 +38,8 @@
     "pg": "^8.23.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.27.0"
+    "react-router-dom": "^6.27.0",
+    "unpdf": "^1.8.1"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

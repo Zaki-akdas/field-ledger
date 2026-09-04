@@ -1,7 +1,6 @@
 import ExcelJS from 'exceljs';
 import { q1, round2, billRow } from './db.js';
 import { createBill } from './mutations.js';
-
 const FIELDS = [
   ['invoice_no', /invoice|inv\s*\.?\s*no|bill\s*no|doc(ument)?\s*no|voucher/i],
   ['amount', /amount|value|net|total/i],
@@ -88,14 +87,6 @@ export async function parseBillWorkbook(filePath, { salesmanId, billDate, file }
   const seen = new Set();
   const skipped = [];
   const bills = [];
-  let created = 0;
-
-  const user = await q1('SELECT id, code, name, role FROM users WHERE id = $1', [salesmanId]);
-  if (!user) {
-    const err = new Error('Salesman not found for this upload.');
-    err.status = 400;
-    throw err;
-  }
 
   ws.eachRow((row, rowNumber) => {
     if (rowNumber <= headerRowNumber) return;
@@ -124,18 +115,32 @@ export async function parseBillWorkbook(filePath, { salesmanId, billDate, file }
 
     // Check for duplicate in DB — this is sync but acceptable for upload
     // We'll let createBill handle the dupe check
-    try {
-      // Note: createBill is async, but we're inside a sync eachRow callback.
-      // We collect the bills to create and process them after.
-      bills.push({ invoiceNo, shopName, area, amount: rawAmount, date });
-    } catch (err) {
-      skipped.push({ row: rowNumber, invoice_no: invoiceNo, reason: err.message });
-    }
+    // Note: createBill is async, but we're inside a sync eachRow callback.
+    // We collect the bills to create and process them after.
+    bills.push({ invoiceNo, shopName, area, amount: rawAmount, date });
   });
 
   // Process bills async — use a separate array to avoid mutating bills during iteration
+  return commitBillRows(bills, { salesmanId, file, skipped });
+}
+
+/**
+ * Insert already-validated bill rows (from any batch importer — spreadsheet or
+ * PDF) one at a time. Returns the upload response shape every caller expects:
+ * how many were newly created, which rows were skipped and why, the created
+ * bill rows, and the summed amount.
+ */
+export async function commitBillRows(rows, { salesmanId, file, skipped = [] } = {}) {
+  const user = await q1('SELECT id, code, name, role FROM users WHERE id = $1', [salesmanId]);
+  if (!user) {
+    const err = new Error('Salesman not found for this upload.');
+    err.status = 400;
+    throw err;
+  }
+
+  let created = 0;
   const createdBills = [];
-  for (const b of bills) {
+  for (const b of rows) {
     try {
       const out = await createBill({
         payload: {

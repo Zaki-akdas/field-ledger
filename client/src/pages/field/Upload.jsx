@@ -93,7 +93,7 @@ export default function Upload() {
         className="mb-4"
         value={mode}
         onChange={setMode}
-        options={[{ value: 'batch', label: 'Excel batch' }, { value: 'single', label: 'One bill' }]}
+        options={[{ value: 'batch', label: 'Batch upload' }, { value: 'single', label: 'One bill' }]}
       />
 
       {mode === 'batch' ? (
@@ -107,7 +107,7 @@ export default function Upload() {
             }`}
           >
             <p className="text-[15px] font-medium">Drop today’s dispatch sheet here</p>
-            <p className="mt-1 text-[13px] text-ink-soft">Excel or CSV, up to 12 MB</p>
+            <p className="mt-1 text-[13px] text-ink-soft">Excel, CSV or a CO-SHIP PDF, up to 12 MB</p>
             <div className="mt-4 flex justify-center gap-2">
               <Btn variant="primary" size="sm" onClick={() => fileRef.current?.click()} disabled={busy}>
                 {busy ? <Spinner /> : null} Choose file
@@ -117,7 +117,7 @@ export default function Upload() {
             <input
               ref={fileRef}
               type="file"
-              accept=".xlsx,.xls,.csv"
+              accept=".xlsx,.xls,.csv,.pdf"
               className="hidden"
               onChange={(e) => runUpload(e.target.files?.[0])}
             />
@@ -128,6 +128,7 @@ export default function Upload() {
             <p className="num mt-2 text-[13px] text-ink-soft">Invoice No · Customer · Area · Amount · Date</p>
             <p className="mt-1.5 text-[12.5px] text-ink-faint">
               Column order and header wording don’t matter — we match on the header text.
+              Drop a CO-SHIP PDF print-out and we read its rows directly.
             </p>
           </div>
 

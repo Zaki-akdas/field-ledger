@@ -7,6 +7,7 @@ import { todayISO } from '../dates.js';
 import { upload, photoUpload } from '../uploads.js';
 import { saveFile, signedUploadUrl } from '../storage.js';
 import { parseBillWorkbook } from '../import.js';
+import { parseCoshipPdf } from '../pdfImport.js';
 import { createBill, recordCollection, cancelBill, uncancelBill, addShortItems, HttpError } from '../mutations.js';
 
 export const router = Router();
@@ -55,17 +56,23 @@ router.post('/bills', handle(async (req, res) => {
 }));
 
 router.post('/bills/upload', upload.single('file'), handle(async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'Choose an Excel file to upload.' });
+  if (!req.file) return res.status(400).json({ error: 'Choose an Excel, CSV or PDF file to upload.' });
   const ownerId = req.user.role === 'admin' && req.body.salesman_id ? Number(req.body.salesman_id) : req.user.id;
+  const opts = {
+    salesmanId: ownerId,
+    billDate: req.body.bill_date || todayISO(),
+    file: req.file.filename,
+  };
   try {
-    const result = await parseBillWorkbook(req.file.path, {
-      salesmanId: ownerId,
-      billDate: req.body.bill_date || todayISO(),
-      file: req.file.filename,
-    });
+    // A CO-SHIP dispatch sheet arrives as a PDF print-out; everything else is
+    // parsed as a spreadsheet (xlsx/xls/csv).
+    const isPdf = /\.pdf$/i.test(req.file.originalname || req.file.filename || '');
+    const result = isPdf
+      ? await parseCoshipPdf(req.file.path, opts)
+      : await parseBillWorkbook(req.file.path, opts);
     res.json(result);
   } finally {
-    // The workbook is parsed and no longer needed — never leave temp files.
+    // The file is parsed and no longer needed — never leave temp files.
     fs.unlink(req.file.path, () => {});
   }
 }));

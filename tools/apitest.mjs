@@ -6,6 +6,7 @@
  */
 const BASE = process.env.BASE || 'http://127.0.0.1:4000/api';
 const ROOT = BASE.replace(/\/api$/, '');
+import PDFDocument from 'pdfkit';
 import { isoDaysAgo } from '../server/dates.js';
 
 // Seed generates 10 days of bills ending today; test against the trailing week
@@ -45,6 +46,49 @@ function denomsFor(amount) {
     if (count > 0) { out.push({ denom: d, count }); left -= count * d; }
   }
   return out;
+}
+
+/**
+ * A synthetic CO-SHIP dispatch sheet, built with pdfkit in the same row
+ * layout the real print-out uses: per bill an invoice/party line (party names
+ * may wrap), DSM/beat lines, then the Invoice/Net/Total-outs amount triple,
+ * closed by a running Total line.
+ */
+async function coshipFixturePdf(invoicePrefix) {
+  const doc = new PDFDocument({ size: 'A4', margin: 30 });
+  const chunks = [];
+  doc.on('data', (c) => chunks.push(c));
+  const done = new Promise((resolve) => doc.on('end', resolve));
+  const inv = (n) => `${invoicePrefix}-${n}`;
+  const lines = [
+    'Vijaya Sales',
+    'Collection Report (Bill Wise)',
+    'Load No: SHIP-FIXT-0001',
+    'S.No Bill No. Bill Date Party Party Id DSM Beat Invoice Amt Net Amt Total Outs.',
+    `1 ${inv(9001)} 01/09/26 Party One General Store FO_FIX_101 Wasim`,
+    'Khan',
+    'Anand Nagar',
+    'TIT',
+    '1,000 1,000 1,000',
+    `2 ${inv(9002)} 01/09/26 A Rather Long Party Name That Wraps`,
+    'Over The Line FO_FIX_102 Wasim',
+    'Khan',
+    'Anand Nagar',
+    'TIT',
+    '500 500 900',
+    `3 ${inv(9003)} 01/09/26 Third Shop FO_FIX_103 Wasim`,
+    'Khan',
+    'Anand Nagar',
+    'TIT',
+    '250 250 250',
+    'Total 1,750 1,750',
+    'Page 1/1',
+  ];
+  doc.fontSize(10);
+  for (const line of lines) doc.text(line);
+  doc.end();
+  await done;
+  return Buffer.concat(chunks);
 }
 
 async function main() {
@@ -173,6 +217,41 @@ async function main() {
   const junkRes = await call('POST', '/bills/upload', { token: S, form: junk });
   check('Unreadable file returns a helpful 400', junkRes.status === 400 && /Re-save/.test(junkRes.data.error), junkRes.data.error);
 
+  /* ------------------------------------------- PDF (CO-SHIP) imports --- */
+  // The batch uploader also reads CO-SHIP dispatch-sheet PDF print-outs.
+  // Push a synthetic sheet (unique invoice numbers per run so a crashed run
+  // can never poison the next one) through the real upload endpoint.
+  const pdfInvoice = `IN-PDFTEST-${Date.now()}`;
+  const pdfBytes = await coshipFixturePdf(pdfInvoice);
+  const pdfForm = new FormData();
+  pdfForm.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'coship-sheet.pdf');
+  const pdfUp = await call('POST', '/bills/upload', { token: S, form: pdfForm });
+  check('CO-SHIP PDF upload creates its bills',
+    pdfUp.status === 200 && pdfUp.data.created === 3 && pdfUp.data.total_amount === 1750,
+    JSON.stringify(pdfUp.data).slice(0, 160));
+  const pdfBills = pdfUp.data?.bills || [];
+  const pdfShapes = pdfBills.map((b) => [b.invoice_no, b.shop_name, b.amount]);
+  check('PDF rows carry invoice, shop and net amount', pdfBills.length === 3
+    && pdfShapes[0][0] === `${pdfInvoice}-9001` && /Party One General Store/.test(pdfShapes[0][1]) && pdfShapes[0][2] === 1000
+    && pdfShapes[1][0] === `${pdfInvoice}-9002` && /Rather Long Party Name That Wraps Over The Line/.test(pdfShapes[1][1]) && pdfShapes[1][2] === 500
+    && pdfShapes[2][0] === `${pdfInvoice}-9003` && /Third Shop/.test(pdfShapes[2][1]) && pdfShapes[2][2] === 250,
+    JSON.stringify(pdfShapes).slice(0, 220));
+
+  const pdfForm2 = new FormData();
+  pdfForm2.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'coship-sheet.pdf');
+  const pdfDup = await call('POST', '/bills/upload', { token: S, form: pdfForm2 });
+  check('Re-uploading the same PDF creates nothing',
+    pdfDup.status === 200 && pdfDup.data.created === 0 && pdfDup.data.skipped.length === 3
+    && /already in the book/i.test(pdfDup.data.skipped[0].reason),
+    JSON.stringify(pdfDup.data).slice(0, 160));
+
+  const junkPdf = new FormData();
+  junkPdf.append('file', new Blob(['this is not a pdf at all'], { type: 'application/pdf' }), 'j.pdf');
+  const junkPdfRes = await call('POST', '/bills/upload', { token: S, form: junkPdf });
+  check('Unreadable PDF returns a helpful 400',
+    junkPdfRes.status === 400 && /CO-SHIP|couldn't be read/.test(junkPdfRes.data.error),
+    junkPdfRes.data.error);
+
   /* ------------------------------------------------------- exports --- */
   for (const report of ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection']) {
     const x = await call('GET', `/export/${report}?format=xlsx&${RANGE}`, { token: A });
@@ -257,7 +336,7 @@ async function main() {
   const { tx } = await import('../server/db.js');
   const { deleteFile } = await import('../server/storage.js');
   const removed = await tx(async (client) => {
-    const { rows: bills } = await client.query("SELECT id FROM bills WHERE invoice_no LIKE 'INV/TEST/%'");
+    const { rows: bills } = await client.query("SELECT id FROM bills WHERE invoice_no LIKE 'INV/TEST/%' OR invoice_no LIKE 'IN-PDFTEST/%'");
     await client.query("DELETE FROM collections WHERE client_id LIKE 'test-%'");
     for (const { id } of bills) {
       await client.query('DELETE FROM collections WHERE bill_id = $1', [id]);

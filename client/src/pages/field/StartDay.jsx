@@ -149,7 +149,7 @@ export default function StartDay() {
       <div className="mt-6 grid grid-cols-2 gap-2.5 sm:gap-3">
         <Link to="/field/upload" className="panel p-3.5 hover:border-line-strong">
           <p className="text-[13.5px] font-medium">Add bills</p>
-          <p className="text-[12px] text-ink-faint">Excel batch or one at a time</p>
+          <p className="text-[12px] text-ink-faint">Sheet, PDF or one at a time</p>
         </Link>
         <Link to="/field/me" className="panel p-3.5 hover:border-line-strong">
           <p className="text-[13.5px] font-medium">My numbers</p>

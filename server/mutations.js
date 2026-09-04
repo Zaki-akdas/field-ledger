@@ -74,12 +74,22 @@ export async function createBill({ payload = {}, user }) {
   try {
     r = await qx(
       `INSERT INTO bills (invoice_no, shop_id, salesman_id, amount, bill_date, source, attachment, client_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (client_id) DO NOTHING RETURNING id`,
       [invoiceNo, shopId, ownerId, round2(amt), date, source, attachment, clientId],
     );
   } catch (err) {
     if (storedFile) await deleteFile(storedFile);
     throw err;
+  }
+
+  // No row back with a client_id means a concurrent replay of this offline op
+  // won the race and committed between our check and our insert — report this
+  // one as already recorded instead of failing with a duplicate-key 500.
+  if (!r.rows[0] && clientId) {
+    if (storedFile) await deleteFile(storedFile);
+    const existing = await q1('SELECT id FROM bills WHERE client_id = $1', [clientId]);
+    if (existing) return { bill: await billRow(existing.id), deduped: true };
   }
 
   return { bill: await billRow(r.rows[0].id) };
@@ -162,43 +172,55 @@ export async function recordCollection({ payload = {}, user }) {
     }
   }
 
-  await tx(async (client) => {
-    for (let i = 0; i < clean.length; i++) {
-      const e = clean[i];
-      const r = await client.query(
-        `INSERT INTO collections
-          (bill_id, salesman_id, mode, amount, ref_no, bank, cheque_date, note, attachment, collection_date, client_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-        [
-          bill.id, bill.salesman_id, e.mode, e.amount,
-          e.ref_no ? String(e.ref_no).trim() : null,
-          e.bank ? String(e.bank).trim() : null,
-          e.cheque_date || null,
-          e.note ? String(e.note).trim() : null,
-          attached[i],
-          date,
-          cid ? `${cid}:${e.mode}` : null,
-        ],
-      );
-      if (e.mode === 'cash') {
-        const colId = r.rows[0].id;
-        for (const d of e.denominations || []) {
-          if (Number(d.count) > 0) {
-            await client.query(
-              'INSERT INTO cash_denominations (collection_id, denom, count) VALUES ($1, $2, $3)',
-              [colId, Number(d.denom), Number(d.count)],
-            );
+  let inserted = 0;
+  try {
+    await tx(async (client) => {
+      for (let i = 0; i < clean.length; i++) {
+        const e = clean[i];
+        // ON CONFLICT: a concurrent replay of the same offline op may have
+        // committed between the check above and this insert — never fail with
+        // a duplicate-key 500, skip the already-recorded entry instead.
+        const r = await client.query(
+          `INSERT INTO collections
+            (bill_id, salesman_id, mode, amount, ref_no, bank, cheque_date, note, attachment, collection_date, client_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+           ON CONFLICT (client_id) DO NOTHING RETURNING id`,
+          [
+            bill.id, bill.salesman_id, e.mode, e.amount,
+            e.ref_no ? String(e.ref_no).trim() : null,
+            e.bank ? String(e.bank).trim() : null,
+            e.cheque_date || null,
+            e.note ? String(e.note).trim() : null,
+            attached[i],
+            date,
+            cid ? `${cid}:${e.mode}` : null,
+          ],
+        );
+        if (!r.rows[0]) continue;
+        inserted += 1;
+        if (e.mode === 'cash') {
+          const colId = r.rows[0].id;
+          for (const d of e.denominations || []) {
+            if (Number(d.count) > 0) {
+              await client.query(
+                'INSERT INTO cash_denominations (collection_id, denom, count) VALUES ($1, $2, $3)',
+                [colId, Number(d.denom), Number(d.count)],
+              );
+            }
           }
         }
       }
-    }
-  }, user).catch(async (err) => {
+    }, user);
+  } catch (err) {
     for (const i of storedByIndex) {
       if (attached[i]) await deleteFile(attached[i]);
     }
     throw err;
-  });
+  }
 
+  // Nothing inserted for a client-tagged replay: another request already
+  // recorded this offline op, so report it as deduped (never an error).
+  if (cid && inserted === 0) return { bill: await billRow(bill.id), collected: total, deduped: true };
   return { bill: await billRow(bill.id), collected: total };
 }
 
@@ -223,15 +245,23 @@ export async function cancelBill({ payload = {}, user }) {
   if (!why) throw new HttpError(422, 'Say why the bill is being cancelled.');
 
   const date = todayISO();
+  let inserted = false;
   await tx(async (client) => {
-    await client.query(
+    const r = await client.query(
       `INSERT INTO cancellations (bill_id, invoice_no, amount, reason, salesman_id, cancel_date, client_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (client_id) DO NOTHING RETURNING id`,
       [bill.id, bill.invoice_no, bill.amount, why, bill.salesman_id, date, cid],
     );
-    await client.query(`UPDATE bills SET cancelled_at = NOW() AT TIME ZONE 'utc' WHERE id = $1`, [bill.id]);
+    inserted = Boolean(r.rows[0]);
+    if (inserted) {
+      await client.query(`UPDATE bills SET cancelled_at = NOW() AT TIME ZONE 'utc' WHERE id = $1`, [bill.id]);
+    }
   }, user);
 
+  // A concurrent replay of the same offline op committed first — report it as
+  // already recorded instead of failing with a duplicate-key error.
+  if (cid && !inserted) return { bill: await billRow(bill.id), deduped: true };
   return { bill: await billRow(bill.id) };
 }
 
@@ -292,11 +322,15 @@ export async function addShortItems({ payload = {}, user }) {
         const exists = await client.query('SELECT id FROM short_items WHERE client_id = $1 LIMIT 1', [clientKey]);
         if (exists.rows.length) { skipped += 1; continue; }
       }
-      await client.query(
+      // ON CONFLICT: a concurrent replay may have committed the same line since
+      // the check above — never fail with a duplicate-key error, skip it.
+      const r = await client.query(
         `INSERT INTO short_items (bill_id, salesman_id, product, qty, rate, amount, reason, short_date, client_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (client_id) DO NOTHING RETURNING id`,
         [bill.id, bill.salesman_id, it.product, it.qty, it.rate, it.amount, it.reason, date, clientKey],
       );
+      if (!r.rows[0]) { skipped += 1; continue; }
     }
   }, user);
 

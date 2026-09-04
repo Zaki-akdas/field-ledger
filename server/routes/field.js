@@ -225,7 +225,7 @@ router.get('/me/dashboard', handle(async (req, res) => {
     }
   }
   const deposit = await q1(
-    "SELECT COALESCE(SUM(amount),0) AS cash_today FROM collections WHERE salesman_id = $1 AND mode = 'cash' AND collection_date = $2",
+    "SELECT COALESCE(SUM(amount::numeric),0)::float8 AS cash_today FROM collections WHERE salesman_id = $1 AND mode = 'cash' AND collection_date = $2",
     [salesmanId, todayISO()],
   );
   res.json({

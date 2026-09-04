@@ -19,8 +19,8 @@ async function billsFor({ from, to, salesmanId }) {
   return q(`
     SELECT b.invoice_no, b.bill_date, b.amount, s.name AS shop_name, s.area AS shop_area,
            u.name AS salesman_name, u.code AS salesman_code,
-           COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) AS collected_amount,
-           COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0) AS short_amount,
+           COALESCE((SELECT SUM(amount::numeric) FROM collections c WHERE c.bill_id = b.id),0)::float8 AS collected_amount,
+           COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id),0)::float8 AS short_amount,
            b.cancelled_at
     FROM bills b JOIN shops s ON s.id = b.shop_id JOIN users u ON u.id = b.salesman_id
     WHERE b.bill_date BETWEEN $1 AND $2 ${where}

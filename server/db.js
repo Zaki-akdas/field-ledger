@@ -194,15 +194,15 @@ export async function billRows({ from, to, salesmanId } = {}) {
     SELECT b.*,
       s.name AS shop_name, s.area AS shop_area, s.owner_name AS shop_owner,
       u.name AS salesman_name, u.code AS salesman_code,
-      COALESCE((SELECT SUM(amount) FROM cancellations c WHERE c.bill_id = b.id), 0) AS cancelled_amount,
-      COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id), 0) AS short_amount,
-      COALESCE((SELECT SUM(amount) FROM collections co WHERE co.bill_id = b.id), 0) AS collected_amount,
+      COALESCE((SELECT SUM(amount::numeric) FROM cancellations c WHERE c.bill_id = b.id), 0)::float8 AS cancelled_amount,
+      COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id), 0)::float8 AS short_amount,
+      COALESCE((SELECT SUM(amount::numeric) FROM collections co WHERE co.bill_id = b.id), 0)::float8 AS collected_amount,
       (SELECT COUNT(*)::int FROM short_items si WHERE si.bill_id = b.id) AS short_count,
       CASE WHEN b.cancelled_at IS NOT NULL THEN 'cancelled'
-           WHEN COALESCE((SELECT SUM(amount) FROM collections co WHERE co.bill_id = b.id),0) <= 0 THEN 'pending'
-           WHEN COALESCE((SELECT SUM(amount) FROM collections co WHERE co.bill_id = b.id),0)
+           WHEN COALESCE((SELECT SUM(amount::numeric) FROM collections co WHERE co.bill_id = b.id),0) <= 0 THEN 'pending'
+           WHEN COALESCE((SELECT SUM(amount::numeric) FROM collections co WHERE co.bill_id = b.id),0)
                 >= b.amount
-                - COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0)
+                - COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id),0)
                 - 0.5 THEN 'delivered'
            ELSE 'partial' END AS status
     FROM bills b
@@ -219,9 +219,9 @@ export async function billRow(id) {
     SELECT b.*,
       s.name AS shop_name, s.area AS shop_area, s.owner_name AS shop_owner, s.phone AS shop_phone,
       u.name AS salesman_name, u.code AS salesman_code,
-      COALESCE((SELECT SUM(amount) FROM cancellations c WHERE c.bill_id = b.id), 0) AS cancelled_amount,
-      COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id), 0) AS short_amount,
-      COALESCE((SELECT SUM(amount) FROM collections co WHERE co.bill_id = b.id), 0) AS collected_amount
+      COALESCE((SELECT SUM(amount::numeric) FROM cancellations c WHERE c.bill_id = b.id), 0)::float8 AS cancelled_amount,
+      COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id), 0)::float8 AS short_amount,
+      COALESCE((SELECT SUM(amount::numeric) FROM collections co WHERE co.bill_id = b.id), 0)::float8 AS collected_amount
     FROM bills b
     JOIN shops s ON s.id = b.shop_id
     JOIN users u ON u.id = b.salesman_id
@@ -268,11 +268,11 @@ export async function reconcile({ from, to, salesmanId } = {}) {
   const totals = await q1(`
     SELECT
       COUNT(*)::int AS bill_count,
-      COALESCE(SUM(b.amount), 0) AS billed,
-      COALESCE((SELECT SUM(c.amount) FROM cancellations c JOIN bills b2 ON b2.id = c.bill_id
-                ${billWhere.length ? 'WHERE ' + billWhere.map(w => w.replace(/\bb\./g, 'b2.')).join(' AND ') : ''}), 0) AS cancelled_amount,
-      COALESCE((SELECT SUM(s.amount) FROM short_items s JOIN bills b3 ON b3.id = s.bill_id
-                ${billWhere.length ? 'WHERE ' + billWhere.map(w => w.replace(/\bb\./g, 'b3.')).join(' AND ') : ''}), 0) AS short_amount,
+      COALESCE(SUM(b.amount::numeric), 0)::float8 AS billed,
+      COALESCE((SELECT SUM(c.amount::numeric) FROM cancellations c JOIN bills b2 ON b2.id = c.bill_id
+                ${billWhere.length ? 'WHERE ' + billWhere.map(w => w.replace(/\bb\./g, 'b2.')).join(' AND ') : ''}), 0)::float8 AS cancelled_amount,
+      COALESCE((SELECT SUM(s.amount::numeric) FROM short_items s JOIN bills b3 ON b3.id = s.bill_id
+                ${billWhere.length ? 'WHERE ' + billWhere.map(w => w.replace(/\bb\./g, 'b3.')).join(' AND ') : ''}), 0)::float8 AS short_amount,
       COALESCE((SELECT COUNT(*)::int FROM cancellations c JOIN bills b4 ON b4.id = c.bill_id
                 ${billWhere.length ? 'WHERE ' + billWhere.map(w => w.replace(/\bb\./g, 'b4.')).join(' AND ') : ''}), 0) AS cancelled_count
     FROM bills b ${bw}`, params);

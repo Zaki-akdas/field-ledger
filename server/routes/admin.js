@@ -89,10 +89,10 @@ router.get('/salesmen/:id', async (req, res, next) => {
     const r = await reconcile({ from, to, salesmanId: id });
     const bills = await q(`
       SELECT b.*, s.name AS shop_name, s.area AS shop_area,
-        COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) AS collected_amount,
-        COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0) AS short_amount,
+        COALESCE((SELECT SUM(amount::numeric) FROM collections c WHERE c.bill_id = b.id),0)::float8 AS collected_amount,
+        COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id),0)::float8 AS short_amount,
         CASE WHEN b.cancelled_at IS NOT NULL THEN 'cancelled'
-             WHEN COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) <= 0 THEN 'pending'
+             WHEN COALESCE((SELECT SUM(amount::numeric) FROM collections c WHERE c.bill_id = b.id),0) <= 0 THEN 'pending'
              ELSE 'partial' END AS status
       FROM bills b JOIN shops s ON s.id = b.shop_id
       WHERE b.salesman_id = $1 AND b.bill_date BETWEEN $2 AND $3
@@ -179,12 +179,12 @@ router.get('/bills', async (req, res, next) => {
     const where = salesmanId ? 'AND b.salesman_id = $3' : '';
     const rows = await q(`
       SELECT b.*, s.name AS shop_name, s.area AS shop_area, u.name AS salesman_name, u.code AS salesman_code,
-        COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) AS collected_amount,
-        COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0) AS short_amount,
+        COALESCE((SELECT SUM(amount::numeric) FROM collections c WHERE c.bill_id = b.id),0)::float8 AS collected_amount,
+        COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id),0)::float8 AS short_amount,
         CASE WHEN b.cancelled_at IS NOT NULL THEN 'cancelled'
-             WHEN COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) <= 0 THEN 'pending'
-             WHEN COALESCE((SELECT SUM(amount) FROM collections c WHERE c.bill_id = b.id),0) >= b.amount
-                  - COALESCE((SELECT SUM(amount) FROM short_items si WHERE si.bill_id = b.id),0) - 0.5 THEN 'delivered'
+             WHEN COALESCE((SELECT SUM(amount::numeric) FROM collections c WHERE c.bill_id = b.id),0) <= 0 THEN 'pending'
+             WHEN COALESCE((SELECT SUM(amount::numeric) FROM collections c WHERE c.bill_id = b.id),0) >= b.amount
+                  - COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id),0) - 0.5 THEN 'delivered'
              ELSE 'partial' END AS status
       FROM bills b JOIN shops s ON s.id = b.shop_id JOIN users u ON u.id = b.salesman_id
       WHERE b.bill_date BETWEEN $1 AND $2 ${where}

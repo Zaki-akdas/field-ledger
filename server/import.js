@@ -24,7 +24,13 @@ function columnMap(headerRow) {
 }
 
 function cellDate(v) {
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    // ExcelJS hands date cells back as local-midnight Dates; toISOString()
+    // would shift them a day back in any non-UTC timezone, so read the
+    // calendar components as written in the cell.
+    const p = (n) => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
   if (typeof v === 'number') {
     const d = new Date(Math.round((v - 25569) * 86400 * 1000));
     return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);

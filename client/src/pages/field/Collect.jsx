@@ -130,7 +130,7 @@ export default function Collect() {
 
   return (
     <div className="pb-40">
-      <FieldHeader title="Collect" back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
+      <FieldHeader title={bill ? `Collect · ${bill.invoice_no}` : 'Collect'} back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[13.5px] text-ink-soft">{bill.invoice_no}</p>

@@ -61,7 +61,7 @@ export default function CancelBill() {
 
   return (
     <div className="pb-10">
-      <FieldHeader title="Mark cancelled" back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
+      <FieldHeader title={bill ? `Mark cancelled · ${bill.invoice_no}` : 'Mark cancelled'} back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[15px]">{bill.invoice_no}</p>

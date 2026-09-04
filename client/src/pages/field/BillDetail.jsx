@@ -4,7 +4,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useAuth, useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money, MODE_LABEL, dateLabel } from '../../lib/format.js';
-import { originOf, originState } from '../../lib/fieldBack.js';
+import { backLabel, originOf, originState } from '../../lib/fieldBack.js';
 import {
   Btn, Card, ErrorNote, KeyValue, Loading, Money, Pill, SectionTitle, Sheet, StatusPill,
 } from '../../components/ui.jsx';
@@ -49,7 +49,7 @@ export default function BillDetail() {
 
   return (
     <div>
-      <FieldHeader title="Bill" back={back ?? '/field/bills'} backState={back ? { back } : undefined} />
+      <FieldHeader title={back ? `Bill · opened from ${backLabel(back)}` : 'Bill'} back={back ?? '/field/bills'} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[15.5px] font-medium">{bill.invoice_no}</p>

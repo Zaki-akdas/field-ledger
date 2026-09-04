@@ -80,7 +80,7 @@ export default function Shortage() {
 
   return (
     <div className="pb-36">
-      <FieldHeader title="Report shortage" back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
+      <FieldHeader title={bill ? `Report shortage · ${bill.invoice_no}` : 'Report shortage'} back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
         <p className="num text-[13.5px] text-ink-soft">{bill.invoice_no} · {bill.shop_name}</p>

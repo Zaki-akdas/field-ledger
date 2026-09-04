@@ -34,3 +34,12 @@ export function originState(tab) {
   const origin = validBack(tab);
   return origin ? { back: origin } : undefined;
 }
+
+/** Human label for a known tab, used in page titles to name the back destination. */
+export function backLabel(origin) {
+  if (origin === '/field/bills') return 'Bills';
+  if (origin === '/field/collect') return 'Collect';
+  if (origin === '/field/me') return 'My numbers';
+  if (origin === '/field/start') return 'Start day';
+  return null;
+}

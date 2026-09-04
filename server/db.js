@@ -8,6 +8,13 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 const { Pool } = pg;
 
+// Money columns are NUMERIC(12,2) so sums stay exact in the database, but
+// node-postgres hands numeric back as strings. Parse them to floats on read
+// so amounts remain JS numbers everywhere — exactly as they were when the
+// columns were real. (Values are rupee magnitudes; float64 is exact for
+// every amount this app can hold, and all SQL aggregation stays in numeric.)
+pg.types.setTypeParser(1700, (v) => (v === null ? null : parseFloat(v)));
+
 if (!process.env.DATABASE_URL) {
   console.error('[db] DATABASE_URL environment variable is not set.');
   process.exit(1);

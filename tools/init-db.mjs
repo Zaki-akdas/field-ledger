@@ -10,6 +10,7 @@ import pg from 'pg';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { migrateAmountColumns } from './migrate-amounts-numeric.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const schemaPath = path.join(__dirname, '..', 'server', 'schema.sql');
@@ -28,6 +29,10 @@ const client = new pg.Client({
 await client.connect();
 console.log('[init-db] Connected — applying ' + path.relative(path.join(__dirname, '..'), schemaPath));
 await client.query(fs.readFileSync(schemaPath, 'utf8'));
+// Existing databases keep whatever column types they were created with, so
+// upgrade money columns here too (a no-op on a fresh schema).
+console.log('[init-db] Money columns:');
+await migrateAmountColumns(client);
 
 const tables = ['users', 'shops', 'products', 'bills', 'collections', 'cash_denominations', 'short_items', 'cancellations', 'day_sessions'];
 for (const t of tables) {

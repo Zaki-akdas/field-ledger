@@ -19,6 +19,7 @@
     "check:classes": "node tools/classcheck.mjs",
     "lint": "eslint .",
     "db:init": "node --env-file-if-exists=.env tools/init-db.mjs",
+    "db:migrate": "node --env-file-if-exists=.env tools/migrate-amounts-numeric.mjs",
     "apitest": "node --env-file-if-exists=.env tools/apitest.mjs",
     "leaktest": "node --env-file-if-exists=.env tools/leaktest.mjs",
     "loadtest": "node tools/loadtest.mjs",

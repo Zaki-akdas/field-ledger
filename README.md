@@ -39,9 +39,13 @@ The server needs a PostgreSQL database. Point `DATABASE_URL` at one (Supabase wo
 box), then bootstrap the schema and seed the demo ledger:
 
 ```bash
-npm run db:init       # apply server/schema.sql (safe to re-run)
+npm run db:init       # apply server/schema.sql + column migrations (safe to re-run)
+npm run db:migrate    # upgrade an existing DB's money columns to NUMERIC(12,2)
 npm run seed          # 6 salesmen, 10 days of demo data (--force wipes first)
 ```
+
+`db:init` is idempotent and also runs the column migrations, so re-running it keeps an older
+database current (it is a no-op once the money columns are already `NUMERIC(12,2)`).
 
 Your real connection string lives in `.env` (gitignored) — never commit it.
 

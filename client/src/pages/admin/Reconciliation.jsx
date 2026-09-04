@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
+import { adminOriginState } from '../../lib/adminBack.js';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
 import { money, MODE_LABEL, dayLabel, dateLabel } from '../../lib/format.js';
@@ -163,8 +164,8 @@ export default function Reconciliation() {
                   className="cursor-pointer"
                   tabIndex={0}
                   role="button"
-                  onClick={() => navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`); } }}
+                  onClick={() => navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') })}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') }); } }}
                 >
                   <Td>
                     <span className="num text-[12.5px] text-ink-faint">{s.code}</span>

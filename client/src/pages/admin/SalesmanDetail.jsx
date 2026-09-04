@@ -1,4 +1,5 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { adminBackLabel, adminOriginOf } from '../../lib/adminBack.js';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
 import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js';
@@ -16,6 +17,18 @@ export default function SalesmanDetail() {
   const from = params.get('from') || rangeFrom;
   const to = params.get('to') || rangeTo;
   useTitle('Salesman');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const backTo = adminOriginOf(location);
+  const goBack = () => {
+    // Back returns to the page the admin tapped from (state.back, legacy
+    // ?back= as fallback), carrying the drill-down's range along, and
+    // replaces history so the browser Back button can't re-enter the detail.
+    const q = new URLSearchParams(location.search);
+    q.delete('back');
+    const search = q.toString();
+    navigate(`${backTo || '/admin/salesmen'}${search ? `?${search}` : ''}`, { replace: true });
+  };
   const { data, loading, error } = useApi(`/admin/salesmen/${id}?from=${from}&to=${to}`);
 
   if (loading) return <Loading label="Opening salesman…" />;
@@ -32,9 +45,9 @@ export default function SalesmanDetail() {
           <h2 className="text-[22px] font-semibold leading-tight tracking-tight sm:text-[24px]">{s.name}</h2>
           <p className="text-[13px] text-ink-soft">{s.phone}</p>
         </div>
-        <Link to="/admin/salesmen" className="text-[13px] font-medium text-ink underline underline-offset-4">
-          All salesmen
-        </Link>
+        <button type="button" onClick={goBack} className="text-[13px] font-medium text-ink underline underline-offset-4">
+          ← {adminBackLabel(backTo) || 'All salesmen'}
+        </button>
       </div>
 
       <Card className="grid grid-cols-1 gap-0 divide-y sm:grid-cols-3 sm:divide-y-0 sm:divide-x divide-line">

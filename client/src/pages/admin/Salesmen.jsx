@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { adminOriginState } from '../../lib/adminBack.js';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { relativeTime } from '../../lib/format.js';
@@ -86,8 +87,8 @@ export default function Salesmen() {
           {rows.map((r) => (
             <tr
               key={r.id}
-              onClick={() => navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`)}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`); } }}
+              onClick={() => navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin/salesmen') })}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin/salesmen') }); } }}
               tabIndex={0}
               role="button"
               className="cursor-pointer"

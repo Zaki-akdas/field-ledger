@@ -209,8 +209,11 @@ export function FieldHeader({ title, back, right }) {
   return (
     <div className="mb-4 flex items-center gap-3">
       {back && (
+        // Returning replaces the deep page in history — pressing browser Back
+        // afterwards goes on, instead of looping back into the screen just left.
         <NavLink
           to={back}
+          replace
           aria-label="Back"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft hover:text-ink"
         >

@@ -6,6 +6,15 @@ import { useAuth, useToast } from '../../lib/context.jsx';
 import { api, downloadExport, shareExport } from '../../lib/api.js';
 import { todayISO, money, MODE_LABEL, dateLabel } from '../../lib/format.js';
 import { originOf } from '../../lib/fieldBack.js';
+
+// Where the header's Back arrow actually returns, so the title can say it.
+// My numbers is the default — it is where “End day” lives in the app.
+const BACK_LABEL = {
+  '/field/bills': 'Bills',
+  '/field/collect': 'Collect',
+  '/field/me': 'My numbers',
+  '/field/start': 'Start day',
+};
 import {
   Btn, Card, ErrorNote, Field, KeyValue, Loading, Money, SectionTitle, Textarea, Variance,
 } from '../../components/ui.jsx';
@@ -186,7 +195,7 @@ export default function EndDay() {
 
   return (
     <div className="pb-10">
-      <FieldHeader title="End day" back={back ?? '/field/me'} backState={back ? { back } : undefined} />
+      <FieldHeader title={`End day · from ${BACK_LABEL[back ?? '/field/me'] || 'My numbers'}`} back={back ?? '/field/me'} backState={back ? { back } : undefined} />
 
       {ended ? (
         <Card className="border-settled/30 bg-settled-tint p-5 text-center">

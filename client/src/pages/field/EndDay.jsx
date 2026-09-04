@@ -133,6 +133,9 @@ export default function EndDay() {
         <div className="min-w-0">
           <p className="text-[13px] font-semibold leading-tight">Field Ledger — Collection report</p>
           <p className="num mt-0.5 truncate text-[11.5px] text-ink-faint">{user?.code} · {user?.name}</p>
+          {/* Same destination context as the page header — the printed sheet
+              records where this report was filed from (the origin tab). */}
+          <p className="mt-0.5 text-[11px] text-ink-faint">Filed from {backLabel(back) || 'My numbers'}</p>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-[12.5px] font-medium">{dateLabel(today)}</p>

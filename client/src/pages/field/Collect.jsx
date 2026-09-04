@@ -115,7 +115,7 @@ export default function Collect() {
       } else {
         push(`Collection saved — ₹${money(total)} against ${bill?.invoice_no}.`, 'success');
       }
-      navigate(back ?? '/field/collect');
+      navigate(back ?? '/field/collect', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {

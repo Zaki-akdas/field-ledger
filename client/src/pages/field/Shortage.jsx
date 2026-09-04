@@ -67,7 +67,7 @@ export default function Shortage() {
       push(result.queued
         ? 'No signal — shortage saved on this phone. It will sync on its own.'
         : `Shortage reported — ₹${money(total)} off ${bill?.invoice_no}.`, 'success');
-      navigate(`/field/bills/${id}`, { state: originState(back) });
+      navigate(`/field/bills/${id}`, { replace: true, state: originState(back) });
     } catch (err) {
       setError(err.message);
     } finally {

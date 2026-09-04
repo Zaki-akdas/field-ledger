@@ -48,7 +48,7 @@ export default function CancelBill() {
       push(result.queued
         ? 'No signal — cancellation saved on this phone. It will sync on its own.'
         : `Cancelled — ${bill?.invoice_no} is off the route.`, 'success');
-      navigate(back ?? '/field/bills');
+      navigate(back ?? '/field/bills', { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -88,7 +88,7 @@ export default function CancelBill() {
         <Btn variant="danger" size="lg" block disabled={busy} onClick={submit}>
           {busy ? 'Cancelling…' : 'Mark cancelled'}
         </Btn>
-        <Btn variant="ghost" block onClick={() => navigate(`/field/bills/${id}`, { state: originState(back) })}>Keep this bill open</Btn>
+        <Btn variant="ghost" block onClick={() => navigate(`/field/bills/${id}`, { replace: true, state: originState(back) })}>Keep this bill open</Btn>
       </div>
     </div>
   );

@@ -279,7 +279,7 @@ export default function EndDay() {
             <Money value={dash.pending.amount} className="font-medium" /> outstanding. They stay on your route tomorrow
             — the office sees them as variance for today.
           </p>
-          <Link to="/field/collect" className="mt-3 inline-block text-[13.5px] font-medium text-attention-deep underline">
+          <Link to="/field/collect" replace className="mt-3 inline-block text-[13.5px] font-medium text-attention-deep underline">
             Finish collections
           </Link>
         </div>
@@ -297,7 +297,7 @@ export default function EndDay() {
             <Btn variant="primary" size="lg" block disabled={busy} onClick={end}>
               {busy ? 'Closing…' : 'End day'}
             </Btn>
-            <Btn variant="ghost" block onClick={() => navigate(back ?? '/field/me')}>Not yet</Btn>
+            <Btn variant="ghost" block onClick={() => navigate(back ?? '/field/me', { replace: true })}>Not yet</Btn>
           </div>
         </>
       )}

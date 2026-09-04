@@ -67,8 +67,12 @@ export default function App() {
             <Route path="/field" element={<Guard role="salesman"><FieldLayout /></Guard>}>
               <Route index element={<StartDay />} />
               <Route path="start" element={<StartDay />} />
-              <Route path="bills" element={<Bills />} />
-              <Route path="collect" element={<Bills mode="collect" />} />
+              {/* Distinct keys: the Bills and Collect lists share one component
+                  and React would otherwise keep the instance (and its filters)
+                  alive when switching tabs, instead of restoring each list's own
+                  remembered view. */}
+              <Route path="bills" element={<Bills key="list-bills" />} />
+              <Route path="collect" element={<Bills key="list-collect" mode="collect" />} />
               <Route path="bills/:id" element={<BillDetail />} />
               <Route path="bills/:id/collect" element={<Collect />} />
               <Route path="bills/:id/cancel" element={<CancelBill />} />

@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useApi, useTitle } from '../../lib/hooks.js';
+import { useAuth } from '../../lib/context.jsx';
 import { todayISO, money } from '../../lib/format.js';
 import { withBack } from '../../lib/fieldBack.js';
 import { Btn, Chips, EmptyState, ErrorNote, Input, Loading, StatusPill, cx } from '../../components/ui.jsx';
@@ -8,13 +9,35 @@ import { FieldHeader, QueuedList } from '../../components/FieldLayout.jsx';
 
 const ORDER = { partial: 0, pending: 1, delivered: 2, cancelled: 3 };
 
+// The list view (Today/All scope + status chip) is kept in sessionStorage per
+// salesman per list, so opening a bill and returning — or hopping tabs — lands
+// back on the same working view instead of resetting to the defaults. It
+// clears itself when the browser session ends, so a fresh day starts fresh.
+function readSavedView(key) {
+  try {
+    const v = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (!v) return null;
+    if (v.scope !== 'today' && v.scope !== 'all') return null;
+    if (!['all', 'open', 'delivered', 'cancelled'].includes(v.status)) return null;
+    return v;
+  } catch {
+    return null;
+  }
+}
+
 export default function Bills({ mode = 'all' }) {
   const collectOnly = mode === 'collect';
   useTitle(collectOnly ? 'To collect' : "Today's bills");
+  const { user } = useAuth();
   const today = todayISO();
-  const [scope, setScope] = useState('today');
-  const [status, setStatus] = useState(collectOnly ? 'open' : 'all');
+  const viewKey = `billsView:${user?.code || 'unknown'}:${collectOnly ? 'collect' : 'bills'}`;
+  const [scope, setScope] = useState(() => readSavedView(viewKey)?.scope ?? 'today');
+  const [status, setStatus] = useState(() => readSavedView(viewKey)?.status ?? (collectOnly ? 'open' : 'all'));
   const [q, setQ] = useState('');
+
+  useEffect(() => {
+    try { sessionStorage.setItem(viewKey, JSON.stringify({ scope, status })); } catch { /* private mode */ }
+  }, [viewKey, scope, status]);
 
   const path = scope === 'today' ? `/bills?from=${today}&to=${today}` : '/bills';
   const { data, loading, error } = useApi(path);

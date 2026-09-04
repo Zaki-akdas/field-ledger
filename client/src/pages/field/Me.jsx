@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApi, useTitle, useDarkMode } from '../../lib/hooks.js';
 import { useAuth, useSync } from '../../lib/context.jsx';
 import { todayISO, shiftISO, MODE_LABEL, rupees, dateLabel } from '../../lib/format.js';
@@ -36,6 +36,11 @@ export default function Me() {
   useTitle('My numbers');
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Where the running-total header was tapped from; only known tabs are honored
+  // so a hand-edited ?back= can't forge a label or destination.
+  const backTo = new URLSearchParams(location.search).get('back');
+  const backLabel = backTo === '/field/bills' ? 'Bills' : backTo === '/field/collect' ? 'Collect' : null;
   const { dark, toggle: toggleDark } = useDarkMode();
   const [days, setDays] = useState('0');
   const today = todayISO();
@@ -74,6 +79,18 @@ export default function Me() {
 
   return (
     <div className="pb-6">
+      {backLabel && backTo && (
+        <Link
+          to={backTo}
+          aria-label={`Back to ${backLabel}`}
+          className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-[12.5px] font-medium text-ink-soft transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink active:opacity-70"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          Back to {backLabel}
+        </Link>
+      )}
       <div className="mb-4">
         <h1 className="text-[22px] font-semibold tracking-tight">{user?.name}</h1>
         <p className="num text-[13px] text-ink-soft">{user?.code} · {user?.phone}</p>

@@ -24,6 +24,13 @@ export default function FieldLayout() {
   const { user } = useAuth();
   const { online, queue, flushing, flush } = useSync();
   const location = useLocation();
+  // Which working tab launched a jump to My numbers — the Me page reads this
+  // back and offers a shortcut to return to where the salesman tapped from.
+  const originTab = location.pathname.startsWith('/field/bills')
+    ? '/field/bills'
+    : location.pathname.startsWith('/field/collect')
+      ? '/field/collect'
+      : null;
   const today = todayISO();
   const { dark, toggle: toggleDark } = useDarkMode();
   const { data, loading, reload } = useApi(`/me/dashboard?from=${today}&to=${today}`, [location.pathname, queue.length]);
@@ -61,7 +68,7 @@ export default function FieldLayout() {
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur safe-top">
         <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
           <NavLink
-            to="/field/me"
+            to={originTab ? { pathname: '/field/me', search: `?back=${encodeURIComponent(originTab)}` } : '/field/me'}
             aria-label="My numbers — full day breakdown"
             title="My numbers — full day breakdown"
             className="group min-w-0 block rounded-lg px-0.5 py-0.5 -ml-0.5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink active:opacity-70"

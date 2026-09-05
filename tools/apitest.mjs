@@ -128,6 +128,21 @@ async function main() {
   const crossRole = await call('GET', '/admin/salesmen', { token: S });
   check('Salesman cannot read admin endpoints', crossRole.status === 403, `got ${crossRole.status}`);
 
+  /* ---------------------------------------------------------- UPI QR --- */
+  // Payee config for the Collect screen's QR. Hidden until UPI_VPA is set,
+  // so split the assertions: off-state is always valid, the on-state payload
+  // is only validated when this environment actually configures a payee.
+  const upi = await call('GET', '/upi', { token: S });
+  check('UPI config requires auth', (await call('GET', '/upi')).status === 401, `got ${(await call('GET', '/upi')).status}`);
+  check('UPI config answers', upi.status === 200 && upi.data && typeof upi.data.enabled === 'boolean', `got ${upi.status}`);
+  if (upi.data?.enabled) {
+    check('UPI payee payload is sound',
+      typeof upi.data.vpa === 'string' && upi.data.vpa.includes('@') && Object.keys(upi.data).every((k) => k !== 'enabled' || upi.data.enabled === true),
+      JSON.stringify(upi.data));
+  } else {
+    check('UPI disabled state exposes no payee', !upi.data.vpa && !upi.data.name, JSON.stringify(upi.data));
+  }
+
   /* --------------------------------------------------- reconciliation --- */
   const rec = (await call('GET', `/admin/reconciliation?${RANGE}`, { token: A })).data;
   const expected = Math.round((rec.billed - rec.cancelled_amount - rec.short_amount) * 100) / 100;

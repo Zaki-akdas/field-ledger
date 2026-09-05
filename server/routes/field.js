@@ -274,4 +274,15 @@ router.get('/salesmen', requireRole('admin'), handle(async (req, res) => {
   res.json({ salesmen: rows });
 }));
 
+/* ------------------------------------------------------------------ UPI --- */
+
+// Payee config for the Collect screen's scannable UPI QR. Deliberately
+// env-driven: nothing is hardcoded, and the endpoint reports `enabled: false`
+// until the office sets UPI_VPA, so the app never shows a guessed account.
+router.get('/upi', handle(async (req, res) => {
+  const vpa = (process.env.UPI_VPA || '').trim();
+  if (!vpa) return res.json({ enabled: false });
+  res.json({ enabled: true, vpa, name: (process.env.UPI_PAYEE_NAME || '').trim() });
+}));
+
 export { HttpError };

@@ -6,6 +6,7 @@ import { api } from '../../lib/api.js';
 import { money } from '../../lib/format.js';
 import { originOf } from '../../lib/fieldBack.js';
 import DenomGrid, { decompose, totalOf } from '../../components/DenomGrid.jsx';
+import UpiQr from '../../components/UpiQr.jsx';
 import {
   Btn, Card, ErrorNote, Field, Input, Loading, Select, cx,
 } from '../../components/ui.jsx';
@@ -228,6 +229,7 @@ export default function Collect() {
             <p className="text-[13px] font-semibold uppercase tracking-wider text-ink-soft">Online</p>
             <p className="num text-[20px] leading-none">₹{money(Number(online_.amount) || 0)}</p>
           </div>
+          <UpiQr amount={Number(online_.amount) || 0} note={bill?.invoice_no || ''} />
           <Field label="Amount">
             <Input mono inputMode="decimal" value={online_.amount} onChange={(e) => setOnlineEntry({ ...online_, amount: e.target.value })} placeholder="0" />
           </Field>

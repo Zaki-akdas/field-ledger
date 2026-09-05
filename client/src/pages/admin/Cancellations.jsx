@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { money, dateLabel } from '../../lib/format.js';
-import { Card, ErrorNote, Loading, Money, SectionTitle, TableWrap, Td, Th } from '../../components/ui.jsx';
+import { Card, ErrorNote, Loading, Money, ResponsiveTable, SectionTitle, col } from '../../components/ui.jsx';
 
 export default function Cancellations() {
   useTitle('Cancellations');
@@ -31,35 +31,19 @@ export default function Cancellations() {
 
       {loading ? <Loading label="Loading cancellations…" /> : error ? <ErrorNote>{error.message}</ErrorNote> : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-          <TableWrap className="max-h-[70vh] overflow-y-auto">
-            <thead>
-              <tr>
-                <Th>Date</Th>
-                <Th>Invoice</Th>
-                <Th className="hidden lg:table-cell">Shop</Th>
-                <Th className="hidden lg:table-cell">Salesman</Th>
-                <Th align="right">Amount</Th>
-                <Th>Reason</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.cancellations || []).map((c) => (
-                <tr key={c.id}>
-                  <Td className="num whitespace-nowrap text-ink-soft">{dateLabel(c.cancel_date)}</Td>
-                  <Td className="num whitespace-nowrap">{c.invoice_no}</Td>
-                  <Td className="hidden max-w-[220px] truncate lg:table-cell">{c.shop_name}</Td>
-                  <Td className="hidden whitespace-nowrap text-[13px] lg:table-cell">
-                    <span className="num text-ink-faint">{c.salesman_code}</span> {c.salesman_name}
-                  </Td>
-                  <Td align="right" className="num text-attention"><Money value={c.amount} /></Td>
-                  <Td className="text-ink-soft max-w-[260px]">{c.reason}</Td>
-                </tr>
-              ))}
-              {(data.cancellations || []).length === 0 && (
-                <tr><Td colSpan={6} className="py-10 text-center text-ink-faint">Nothing was cancelled in this period.</Td></tr>
-              )}
-            </tbody>
-          </TableWrap>
+          <ResponsiveTable
+            className="max-h-[70vh] overflow-y-auto"
+            cols={[
+              col('Invoice', (c) => c.invoice_no, null, 'top'),
+              col('Reason', (c) => c.reason, null, 'mid'),
+              col('Amount', (c) => <Money value={c.amount} />, 'right', 'grid'),
+              col('Date', (c) => dateLabel(c.cancel_date)),
+              col('Shop', (c) => c.shop_name),
+              col('Salesman', (c) => <span><span className="num text-ink-faint">{c.salesman_code}</span> {c.salesman_name}</span>),
+            ]}
+            rows={data.cancellations || []}
+            empty={<p className="py-10 text-center text-ink-faint">Nothing was cancelled in this period.</p>}
+          />
 
           <div>
             <SectionTitle hint="Where the money went">By reason</SectionTitle>

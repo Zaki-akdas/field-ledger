@@ -1,7 +1,7 @@
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { money } from '../../lib/format.js';
-import { Card, ErrorNote, Loading, Money, SectionTitle, TableWrap, Td, Th } from '../../components/ui.jsx';
+import { Card, ErrorNote, Loading, Money, ResponsiveTable, SectionTitle, col } from '../../components/ui.jsx';
 
 export default function CashRollup() {
   useTitle('Cash rollup');
@@ -22,34 +22,23 @@ export default function CashRollup() {
         <div className="grid gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
           <div>
             <SectionTitle hint={`₹${money(data.total)} in cash`}>Denominations</SectionTitle>
-            <TableWrap>
-              <thead>
-                <tr>
-                  <Th>Denomination</Th>
-                  <Th align="right">Count</Th>
-                  <Th align="right">Amount</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.length === 0 && (
-                  <tr><Td colSpan={3} className="py-8 text-center text-ink-faint">No cash collected in this period.</Td></tr>
-                )}
-                {data.rows.map((r) => (
-                  <tr key={r.denom}>
-                    <Td className="num text-[14.5px]">₹{r.denom}</Td>
-                    <Td align="right" className="num">{r.count.toLocaleString('en-IN')}</Td>
-                    <Td align="right" className="num"><Money value={r.amount} /></Td>
-                  </tr>
-                ))}
-                <tr className="bg-paper/70">
-                  <Td className="font-medium">Total</Td>
-                  <Td align="right" className="num font-medium">
-                    {data.rows.reduce((a, r) => a + r.count, 0).toLocaleString('en-IN')}
-                  </Td>
-                  <Td align="right" className="num font-medium"><Money value={data.total} /></Td>
-                </tr>
-              </tbody>
-            </TableWrap>
+            <ResponsiveTable
+              cols={[
+                col('Denomination', (d) => <span className="num text-[13.5px] font-medium">₹{d.denom}</span>, null, 'top'),
+                col('Count', (d) => d.count.toLocaleString('en-IN'), 'right', 'grid'),
+                col('Amount', (d) => <Money value={d.amount} />, 'right', 'grid'),
+              ]}
+              rows={data.rows}
+              empty={<p className="py-8 text-center text-ink-faint">No cash collected in this period.</p>}
+              footer={(
+                <div className="flex items-center justify-between rounded-xl border border-line bg-paper/70 px-3.5 py-2.5">
+                  <span className="text-[12.5px] font-medium">Total</span>
+                  <span className="num text-[13px] font-medium">
+                    {data.rows.reduce((a, r) => a + r.count, 0).toLocaleString('en-IN')} notes · <Money value={data.total} />
+                  </span>
+                </div>
+              )}
+            />
             <p className="mt-2 text-[12px] text-ink-faint">
               This counts cash by the day it was collected, unlike the reconciliation strip which follows bill dates.
             </p>

@@ -5,7 +5,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { relativeTime } from '../../lib/format.js';
 import {
-  ErrorNote, Loading, Money, TableWrap, Td, Th, Variance, cx,
+  ErrorNote, Loading, Money, ResponsiveTable, Variance, col, cx,
 } from '../../components/ui.jsx';
 
 const COLUMNS = [
@@ -66,76 +66,74 @@ export default function Salesmen() {
         <SalesmanFilter salesmen={people.data?.salesmen} value={salesmanId} onChange={setSalesman} />
       </div>
 
-      <TableWrap>
-        <thead>
-          <tr>
-            {COLUMNS.map((c) => (
-              <Th key={c.key} align={c.align} className={c.hide}>
-                <button
-                  type="button"
-                  onClick={() => toggle(c.key)}
-                  className={cx('inline-flex items-center gap-1 hover:text-ink', sort.key === c.key && 'text-ink')}
-                >
-                  {c.label}
-                  {sort.key === c.key && <span className="text-[9px]">{sort.dir === 'asc' ? '▲' : '▼'}</span>}
-                </button>
-              </Th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr
-              key={r.id}
-              onClick={() => navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin/salesmen') })}
-              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin/salesmen') }); } }}
-              tabIndex={0}
-              role="button"
-              className="cursor-pointer"
-            >
-              <Td>
-                <span className="num text-[11.5px] text-ink-faint">{r.code}</span>
-                <span className="block text-[13.5px] font-medium">{r.name}</span>
-              </Td>
-              <Td align="right" className="num hidden text-ink-soft md:table-cell">{r.bill_count}</Td>
-              <Td align="right" className="num hidden text-ink-soft xl:table-cell"><Money value={r.billed} /></Td>
-              <Td align="right" className="num hidden lg:table-cell">
-                {r.cancelled_count > 0
+      <ResponsiveTable
+        cols={COLUMNS.map((c) => col(
+          c.label,
+          (r) => {
+            switch (c.key) {
+              case 'code':
+                return (
+                  <span>
+                    <span className="num text-[11.5px] text-ink-faint">{r.code}</span>
+                    <span className="block text-[13.5px] font-medium">{r.name}</span>
+                  </span>
+                );
+              case 'bill_count': return r.bill_count;
+              case 'billed': return <Money value={r.billed} />;
+              case 'cancelled_amount':
+                return r.cancelled_count > 0
                   ? <span className="text-attention"><Money value={r.cancelled_amount} /><span className="text-ink-faint"> · {r.cancelled_count}</span></span>
-                  : <span className="text-ink-faint">—</span>}
-              </Td>
-              <Td align="right" className="num hidden xl:table-cell">
-                {r.short_amount > 0 ? <span className="text-attention"><Money value={r.short_amount} /></span> : <span className="text-ink-faint">—</span>}
-              </Td>
-              <Td align="right" className="num"><Money value={r.expected} /></Td>
-              <Td align="right" className="num hidden text-ink-soft xl:table-cell"><Money value={r.by_mode.cash} /></Td>
-              <Td align="right" className="num"><Money value={r.collected} /></Td>
-              <Td align="right"><Variance value={r.variance} /></Td>
-              <Td className="hidden whitespace-nowrap text-[12.5px] lg:table-cell">
-                {r.day_ended
+                  : null;
+              case 'short_amount':
+                return r.short_amount > 0 ? <span className="text-attention"><Money value={r.short_amount} /></span> : null;
+              case 'expected': return <Money value={r.expected} />;
+              case 'by_mode.cash': return <Money value={r.by_mode.cash} />;
+              case 'collected': return <Money value={r.collected} />;
+              case 'variance': return <Variance value={r.variance} />;
+              case 'day_ended':
+                return r.day_ended
                   ? <span className="text-settled">Ended {r.day_ended}</span>
                   : r.day_started
                     ? <span className="text-ink-soft">On route since {r.day_started}</span>
-                    : <span className="text-ink-faint">Not started</span>}
-              </Td>
-              <Td className="hidden whitespace-nowrap text-[12.5px] text-ink-faint xl:table-cell">{relativeTime(r.last_activity) || '—'}</Td>
-            </tr>
-          ))}
-          <tr className="bg-paper/70">
-            <Td className="font-medium">Total</Td>
-            <Td align="right" className="num hidden font-medium md:table-cell">{totals.bills}</Td>
-            <Td className="hidden xl:table-cell" />
-            <Td className="hidden lg:table-cell" />
-            <Td className="hidden xl:table-cell" />
-            <Td align="right" className="num font-medium"><Money value={totals.expected} /></Td>
-            <Td className="hidden xl:table-cell" />
-            <Td align="right" className="num font-medium"><Money value={totals.collected} /></Td>
-            <Td align="right" className="font-medium"><Variance value={totals.variance} /></Td>
-            <Td className="hidden lg:table-cell" />
-            <Td className="hidden xl:table-cell" />
-          </tr>
-        </tbody>
-      </TableWrap>
+                    : null;
+              case 'last_activity': return relativeTime(r.last_activity);
+              default: return null;
+            }
+          },
+          c.align,
+          c.key === 'code' ? 'top'
+            : ['bill_count', 'expected', 'collected', 'variance'].includes(c.key) ? 'grid'
+              : null,
+          () => (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); toggle(c.key); }}
+              className={cx('inline-flex items-center gap-1 hover:text-ink', sort.key === c.key && 'text-ink')}
+            >
+              {c.label}
+              {sort.key === c.key && <span className="text-[9px]">{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+            </button>
+          ),
+        ))}
+        rows={rows}
+        rowProps={(r) => ({
+          tabIndex: 0,
+          role: 'button',
+          className: 'cursor-pointer',
+          onClick: () => navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin/salesmen') }),
+          onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${r.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin/salesmen') }); } },
+        })}
+        footer={(
+          <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-1 rounded-xl border border-line bg-paper/70 px-3.5 py-2.5">
+            <span className="text-[12.5px] font-medium">Total · {totals.bills} bills</span>
+            <span className="text-right text-[12.5px]">
+              <span className="text-ink-faint">expected </span><span className="num font-medium"><Money value={totals.expected} /></span>
+              <span className="ml-3 text-ink-faint">collected </span><span className="num font-medium"><Money value={totals.collected} /></span>
+              <span className="ml-3"><Variance value={totals.variance} /></span>
+            </span>
+          </div>
+        )}
+      />
 
       <p className="mt-2 text-[12px] text-ink-faint">
         Click a row to open that salesman’s bills, collections, cancellations and shortages.

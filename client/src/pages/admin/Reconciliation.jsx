@@ -4,7 +4,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
 import { money, MODE_LABEL, dayLabel, dateLabel } from '../../lib/format.js';
 import {
-  Btn, Card, ErrorNote, Loading, Money, SectionTitle, TableWrap, Td, Th, Variance, cx,
+  Btn, Card, ErrorNote, Loading, Money, ResponsiveTable, SectionTitle, Variance, col, cx,
 } from '../../components/ui.jsx';
 
 function Hero({ label, value, tone = 'ink', sub, subTone = 'text-ink-faint' }) {
@@ -74,62 +74,42 @@ export default function Reconciliation() {
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="min-w-0">
           <SectionTitle hint="How the money came in">Collected by mode</SectionTitle>
-          <TableWrap>
-            <thead>
-              <tr>
-                <Th>Mode</Th>
-                <Th align="right">Entries</Th>
-                <Th align="right">Amount</Th>
-                <Th align="right">Share</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(r.by_mode).map(([mode, amount]) => (
-                <tr key={mode}>
-                  <Td>{MODE_LABEL[mode]}</Td>
-                  <Td align="right" className="num text-ink-soft">
-                    {r.mode_entries.find((m) => m.mode === mode)?.entries || 0}
-                  </Td>
-                  <Td align="right" className="num"><Money value={amount} /></Td>
-                  <Td align="right" className="num text-ink-faint">
-                    {r.actual > 0 ? `${Math.round((amount / r.actual) * 100)}%` : '—'}
-                  </Td>
-                </tr>
-              ))}
-              <tr className="bg-paper/60">
-                <Td className="font-medium">Total</Td>
-                <Td />
-                <Td align="right" className="num font-medium"><Money value={r.actual} /></Td>
-                <Td />
-              </tr>
-            </tbody>
-          </TableWrap>
+          <ResponsiveTable
+            cols={[
+              col('Mode', (m) => MODE_LABEL[m.mode], null, 'top'),
+              col('Entries', (m) => m.entries, 'right'),
+              col('Amount', (m) => <Money value={m.amount} />, 'right', 'grid'),
+              col('Share', (m) => (r.actual > 0 ? `${Math.round((m.amount / r.actual) * 100)}%` : '—'), 'right'),
+            ]}
+            rows={Object.entries(r.by_mode).map(([mode, amount]) => ({
+              key: mode,
+              mode,
+              amount,
+              entries: r.mode_entries.find((x) => x.mode === mode)?.entries || 0,
+            }))}
+            footer={(
+              <div className="flex items-center justify-between rounded-xl border border-line bg-paper/60 px-3.5 py-2.5">
+                <span className="text-[12.5px] font-medium">Total</span>
+                <span className="num text-[13.5px] font-medium"><Money value={r.actual} /></span>
+              </div>
+            )}
+          />
         </div>
 
         <div className="min-w-0">
           <SectionTitle hint="One row per day — where the variance sits">Day by day</SectionTitle>
-          <TableWrap className="max-h-[330px] overflow-y-auto">
-            <thead>
-              <tr>
-                <Th>Day</Th>
-                <Th align="right">Bills</Th>
-                <Th align="right">Expected</Th>
-                <Th align="right">Collected</Th>
-                <Th align="right">Variance</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {[...r.days].reverse().map((d) => (
-                <tr key={d.date}>
-                  <Td className="whitespace-nowrap">{dayLabel(d.date)}</Td>
-                  <Td align="right" className="num text-ink-soft">{d.bill_count}</Td>
-                  <Td align="right" className="num"><Money value={d.expected} /></Td>
-                  <Td align="right" className="num"><Money value={d.actual} /></Td>
-                  <Td align="right"><Variance value={d.variance} /></Td>
-                </tr>
-              ))}
-            </tbody>
-          </TableWrap>
+          <ResponsiveTable
+            className="max-h-[70vh] overflow-y-auto"
+            tableWrapProps={{ className: 'max-h-[330px] overflow-y-auto' }}
+            cols={[
+              col('Day', (d) => dayLabel(d.date), null, 'top'),
+              col('Bills', (d) => d.bill_count, 'right'),
+              col('Expected', (d) => <Money value={d.expected} />, 'right', 'grid'),
+              col('Collected', (d) => <Money value={d.actual} />, 'right', 'grid'),
+              col('Variance', (d) => <Variance value={d.variance} />, 'right', 'grid'),
+            ]}
+            rows={[...r.days].reverse()}
+          />
         </div>
       </div>
 
@@ -140,50 +120,30 @@ export default function Reconciliation() {
         >
           Salesman-wise
         </SectionTitle>
-        <TableWrap>
-          <thead>
-            <tr>
-              <Th>Salesman</Th>
-              <Th align="right" className="hidden md:table-cell">Bills</Th>
-              <Th align="right">Expected</Th>
-              <Th align="right" className="hidden xl:table-cell">Cash</Th>
-              <Th align="right">Collected</Th>
-              <Th align="right">Variance</Th>
-              <Th className="hidden xl:table-cell">Day</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {(salesmen.data?.salesmen || []).length === 0 && (
-              <tr><Td colSpan={7} className="text-center text-ink-faint">No salesmen yet.</Td></tr>
-            )}
-            {(salesmen.data?.salesmen || []).map((s) => {
-              const row = (data.salesmen || []).find((x) => x.id === s.id);
-              return (
-                <tr
-                  key={s.id}
-                  className="cursor-pointer"
-                  tabIndex={0}
-                  role="button"
-                  onClick={() => navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') })}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') }); } }}
-                >
-                  <Td>
-                    <span className="num text-[12.5px] text-ink-faint">{s.code}</span>
-                    <span className="block text-[13.5px] font-medium">{s.name}</span>
-                  </Td>
-                  <Td align="right" className="num hidden text-ink-soft md:table-cell">{row?.bill_count ?? '—'}</Td>
-                  <Td align="right" className="num">{row ? <Money value={row.expected} /> : '—'}</Td>
-                  <Td align="right" className="num hidden text-ink-soft xl:table-cell">{row ? <Money value={row.by_mode?.cash} /> : '—'}</Td>
-                  <Td align="right" className="num">{row ? <Money value={row.collected} /> : '—'}</Td>
-                  <Td align="right">{row ? <Variance value={row.variance} /> : '—'}</Td>
-                  <Td className="hidden whitespace-nowrap text-[12.5px] text-ink-faint xl:table-cell">
-                    {row?.day_ended ? `Ended ${row.day_ended}` : row?.day_started ? `Started ${row.day_started}` : 'Not started'}
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </TableWrap>
+        <ResponsiveTable
+          cols={[
+            col('Salesman', (s) => (
+              <span>
+                <span className="num text-[12.5px] text-ink-faint">{s.code}</span>
+                <span className="block text-[13.5px] font-medium">{s.name}</span>
+              </span>
+            ), null, 'top'),
+            col('Expected', (s) => (s.row ? <Money value={s.row.expected} /> : '—'), 'right', 'grid'),
+            col('Collected', (s) => (s.row ? <Money value={s.row.collected} /> : '—'), 'right', 'grid'),
+            col('Variance', (s) => (s.row ? <Variance value={s.row.variance} /> : '—'), 'right', 'grid'),
+            col('Bills', (s) => s.row?.bill_count ?? '—', 'right'),
+            col('Day', (s) => (s.row?.day_ended ? `Ended ${s.row.day_ended}` : s.row?.day_started ? `Started ${s.row.day_started}` : 'Not started')),
+          ]}
+          rows={(salesmen.data?.salesmen || []).map((s) => ({ ...s, row: (data.salesmen || []).find((x) => x.id === s.id) }))}
+          empty={<Card className="p-5 text-[13.5px] text-ink-faint">No salesmen yet.</Card>}
+          rowProps={(s) => ({
+            tabIndex: 0,
+            role: 'button',
+            className: 'cursor-pointer',
+            onClick: () => navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') }),
+            onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') }); } },
+          })}
+        />
         <p className="mt-2 text-[12px] text-ink-faint">
           Reconciliation is measured on bills dated in the period, whatever day the cash came in.
         </p>

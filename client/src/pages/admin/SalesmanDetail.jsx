@@ -4,7 +4,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
 import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js';
 import {
-  Card, ErrorNote, Loading, Money, Pill, SectionTitle, TableWrap, Td, Th, Variance, cx,
+  Card, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
 } from '../../components/ui.jsx';
 import AttachmentPhoto from '../../components/AttachmentPhoto.jsx';
 
@@ -66,69 +66,46 @@ export default function SalesmanDetail() {
 
       <div>
         <SectionTitle hint={`${data.bills.length} bills`}>Bills on the route</SectionTitle>
-        <TableWrap className="max-h-[420px] overflow-y-auto">
-          <thead>
-            <tr>
-              <Th>Invoice</Th>
-              <Th className="hidden lg:table-cell">Date</Th>
-              <Th>Shop</Th>
-              <Th align="right">Amount</Th>
-              <Th align="right" className="hidden xl:table-cell">Short</Th>
-              <Th align="right" className="hidden md:table-cell">Collected</Th>
-              <Th align="right">Balance</Th>
-              <Th>Status</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.bills.map((b) => (
-              <tr key={b.id}>
-                <Td className="num whitespace-nowrap">{b.invoice_no}</Td>
-                <Td className="num hidden whitespace-nowrap text-ink-soft lg:table-cell">{dateLabel(b.bill_date)}</Td>
-                <Td className="max-w-[220px] truncate">{b.shop_name}</Td>
-                <Td align="right" className="num"><Money value={b.amount} /></Td>
-                <Td align="right" className="num hidden xl:table-cell">{b.short_amount > 0 ? <span className="text-attention"><Money value={b.short_amount} /></span> : <span className="text-ink-faint">—</span>}</Td>
-                <Td align="right" className="num hidden md:table-cell"><Money value={b.collected_amount} /></Td>
-                <Td align="right" className="num"><Money value={b.balance} /></Td>
-                <Td><Pill tone={TONE[b.status]}>{STATUS_LABEL[b.status]}</Pill></Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableWrap>
+        <ResponsiveTable
+          className="max-h-[70vh] overflow-y-auto"
+          tableWrapProps={{ className: 'max-h-[420px] overflow-y-auto' }}
+          cols={[
+            col('Invoice', (b) => b.invoice_no, null, 'top'),
+            col('Status', (b) => <Pill tone={TONE[b.status]}>{STATUS_LABEL[b.status]}</Pill>, null, 'mid'),
+            col('Amount', (b) => <Money value={b.amount} />, 'right', 'grid'),
+            col('Collected', (b) => <Money value={b.collected_amount} />, 'right', 'grid'),
+            col('Balance', (b) => <Money value={b.balance} />, 'right', 'grid'),
+            col('Shop', (b) => b.shop_name),
+            col('Date', (b) => dateLabel(b.bill_date)),
+          ]}
+          rows={data.bills}
+        />
       </div>
 
       <div>
         <SectionTitle hint={`${data.collections.length} entries`}>Collection entries</SectionTitle>
-        <TableWrap className="max-h-[420px] overflow-y-auto">
-          <thead>
-            <tr>
-              <Th className="hidden lg:table-cell">Date</Th>
-              <Th>Invoice</Th>
-              <Th>Mode</Th>
-              <Th>Reference</Th>
-              <Th className="hidden xl:table-cell">Note</Th>
-              <Th align="right">Amount</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.collections.map((c) => (
-              <tr key={c.id}>
-                <Td className="num hidden whitespace-nowrap text-ink-soft lg:table-cell">{dateLabel(c.collection_date)}</Td>
-                <Td className="num whitespace-nowrap">{c.invoice_no}</Td>
-                <Td>{MODE_LABEL[c.mode]}</Td>
-                <Td className="num whitespace-nowrap text-ink-soft">{c.ref_no || '—'}</Td>
-                <Td className="hidden text-ink-soft xl:table-cell">
-                  {c.note && <span>{c.note}</span>}
-                  {c.attachment && (
-                    <span className="mt-1 block">
-                      <AttachmentPhoto name={c.attachment} alt={`${MODE_LABEL[c.mode] || 'Collection'} photo ${c.invoice_no || ''}`.trim()} />
-                    </span>
-                  )}
-                </Td>
-                <Td align="right" className="num"><Money value={c.amount} /></Td>
-              </tr>
-            ))}
-          </tbody>
-        </TableWrap>
+        <ResponsiveTable
+          className="max-h-[70vh] overflow-y-auto"
+          tableWrapProps={{ className: 'max-h-[420px] overflow-y-auto' }}
+          cols={[
+            col('Invoice', (c) => c.invoice_no, null, 'top'),
+            col('Mode', (c) => MODE_LABEL[c.mode], null, 'mid'),
+            col('Note', (c) => (
+              <>
+                {c.note && <span>{c.note}</span>}
+                {c.attachment && (
+                  <span className="mt-1 block">
+                    <AttachmentPhoto name={c.attachment} alt={`${MODE_LABEL[c.mode] || 'Collection'} photo ${c.invoice_no || ''}`.trim()} />
+                  </span>
+                )}
+              </>
+            ), null, 'mid'),
+            col('Amount', (c) => <Money value={c.amount} />, 'right', 'grid'),
+            col('Reference', (c) => c.ref_no || '—'),
+            col('Date', (c) => dateLabel(c.collection_date)),
+          ]}
+          rows={data.collections}
+        />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -136,50 +113,34 @@ export default function SalesmanDetail() {
           <SectionTitle hint={`${data.cancellations.length} bills · ₹${money(data.cancellations.reduce((a, c) => a + c.amount, 0))}`}>
             Cancellations
           </SectionTitle>
-          {data.cancellations.length === 0 ? (
-            <Card className="p-5 text-[13.5px] text-ink-faint">Nothing cancelled in this period.</Card>
-          ) : (
-            <TableWrap>
-              <thead>
-                <tr><Th>Invoice</Th><Th className="hidden sm:table-cell">Shop</Th><Th align="right">Amount</Th><Th>Reason</Th></tr>
-              </thead>
-              <tbody>
-                {data.cancellations.map((c) => (
-                  <tr key={c.id}>
-                    <Td className="num">{c.invoice_no}</Td>
-                    <Td className="hidden max-w-[160px] truncate sm:table-cell">{c.shop_name}</Td>
-                    <Td align="right" className="num text-attention"><Money value={c.amount} /></Td>
-                    <Td className="text-ink-soft">{c.reason}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
-          )}
+          <ResponsiveTable
+            cols={[
+              col('Invoice', (c) => c.invoice_no, null, 'top'),
+              col('Reason', (c) => c.reason, null, 'mid'),
+              col('Amount', (c) => <Money value={c.amount} />, 'right', 'grid'),
+              col('Date', (c) => dateLabel(c.cancel_date)),
+              col('Shop', (c) => c.shop_name),
+            ]}
+            rows={data.cancellations}
+            empty={<Card className="p-5 text-[13.5px] text-ink-faint">Nothing cancelled in this period.</Card>}
+          />
         </div>
 
         <div className="min-w-0">
           <SectionTitle hint={`${data.shortages.length} lines · ₹${money(data.shortages.reduce((a, c) => a + c.amount, 0))}`}>
             Shortages
           </SectionTitle>
-          {data.shortages.length === 0 ? (
-            <Card className="p-5 text-[13.5px] text-ink-faint">No short items reported in this period.</Card>
-          ) : (
-            <TableWrap>
-              <thead>
-                <tr><Th>Product</Th><Th align="right">Qty</Th><Th align="right">Amount</Th><Th className="hidden sm:table-cell">Reason</Th></tr>
-              </thead>
-              <tbody>
-                {data.shortages.map((s) => (
-                  <tr key={s.id}>
-                    <Td className="max-w-[170px] truncate">{s.product}</Td>
-                    <Td align="right" className="num">{s.qty}</Td>
-                    <Td align="right" className="num text-attention"><Money value={s.amount} /></Td>
-                    <Td className="hidden max-w-[150px] truncate text-ink-soft sm:table-cell">{s.reason}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
-          )}
+          <ResponsiveTable
+            cols={[
+              col('Product', (s) => s.product, null, 'top'),
+              col('Reason', (s) => s.reason, null, 'mid'),
+              col('Amount', (s) => <Money value={s.amount} />, 'right', 'grid'),
+              col('Qty', (s) => s.qty, 'right', 'grid'),
+              col('Date', (s) => dateLabel(s.short_date)),
+            ]}
+            rows={data.shortages}
+            empty={<Card className="p-5 text-[13.5px] text-ink-faint">No short items reported in this period.</Card>}
+          />
         </div>
       </div>
 

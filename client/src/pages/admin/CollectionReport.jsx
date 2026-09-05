@@ -4,6 +4,29 @@ import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { money, dateLabel } from '../../lib/format.js';
 import { Card, ErrorNote, Loading, Money, TableWrap, Td } from '../../components/ui.jsx';
 
+/** One bill as a phone card: invoice + amount up top, party under it, payment chips at the foot. */
+function BillCard({ b }) {
+  return (
+    <div className="rounded-xl border border-line bg-surface p-3.5 shadow-panel">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="num text-[13.5px] font-medium">{b.invoice_no}</p>
+          <p className="mt-0.5 truncate text-[12.5px] text-ink-soft">{b.shop_name}</p>
+          <p className="num truncate text-[11.5px] text-ink-faint">{b.salesman_code} · {b.salesman_name}</p>
+        </div>
+        <p className="num shrink-0 text-[15px] font-medium"><Money value={b.amount} /></p>
+      </div>
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-2.5 text-[12px] text-ink-soft">
+        <span className="num text-ink-faint">#{b.sno}</span>
+        <span className="flex items-center gap-1.5"><span className="text-ink-faint">Collected</span><span className="num"><Money value={b.collected} /></span></span>
+        {b.balance > 0.5 && (
+          <span className="flex items-center gap-1.5"><span className="text-ink-faint">Balance</span><span className="num font-medium text-attention"><Money value={b.balance} /></span></span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Collection report — the office's printable daily register in the CO-SHIP
  * layout: S.No, invoice, party and amount per line, grouped by day with a
@@ -70,7 +93,38 @@ export default function CollectionReport() {
           <p className="mt-1 text-[13px] text-ink-faint">Widen the date range or pick a salesman to see their register.</p>
         </Card>
       ) : (
-        <TableWrap className="max-h-[70vh] overflow-y-auto">
+        <>
+        {/* Phone: stacked cards grouped by day, one total line per day. */}
+        <div className="md:hidden">
+          {view.groups.map((g) => (
+            <div key={g.date} className="mb-5">
+              <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-soft">
+                {dateLabel(g.date)} · {g.rows.length} {g.rows.length === 1 ? 'bill' : 'bills'}
+              </p>
+              <div className="space-y-2.5">
+                {g.rows.map((b) => <BillCard key={b.id} b={b} />)}
+              </div>
+              <div className="mt-2.5 flex items-center justify-between rounded-xl border border-line bg-paper/60 px-3.5 py-2.5 text-[12.5px]">
+                <span className="font-semibold">Day total</span>
+                <span className="num">
+                  <Money value={g.amount} />
+                  <span className="text-ink-faint"> · coll </span><Money value={g.collected} />
+                  <span className="text-ink-faint"> · bal </span><span className={g.balance > 0.5 ? 'font-medium text-attention' : ''}><Money value={g.balance} /></span>
+                </span>
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center justify-between rounded-xl border-2 border-ink bg-surface px-3.5 py-3">
+            <span className="text-[13.5px] font-semibold">Grand total · {view.count} bills</span>
+            <span className="num text-[13.5px] font-semibold">
+              <Money value={view.billed} />
+              <span className="text-ink-faint"> · coll </span><Money value={view.collected} />
+              <span className="text-ink-faint"> · bal </span><Money value={view.balance} />
+            </span>
+          </div>
+        </div>
+        {/* md+: the printable register table. */}
+        <TableWrap className="hidden max-h-[70vh] overflow-y-auto md:block">
           <thead>
             <tr>
               <th className="w-14">S.No</th>
@@ -120,6 +174,7 @@ export default function CollectionReport() {
               </tr>
             </tbody>
         </TableWrap>
+        </>
       )}
     </div>
   );

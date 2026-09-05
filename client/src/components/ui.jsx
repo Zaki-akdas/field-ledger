@@ -300,6 +300,101 @@ export function ProgressBar({ value, max, tone = 'settled' }) {
   );
 }
 
+/* ------------------------------------------------- mobile stacked cards ---
+ *
+ * ResponsiveTable renders a real <table> from md: up, but below 480px it
+ * hides the table and stacks each row as a labelled card instead — so phone
+ * users read records vertically and never scroll a wide table sideways.
+ *
+ * col(label, cell, align?, spawn?) declares where a column lands in the
+ * mobile card: spawn 'top' = primary line, 'mid' = second line under it,
+ * 'grid' = labelled stat at the card's top right, undefined = footer chips.
+ */
+const SPAWN_POS = ['top', 'mid', 'grid'];
+export const col = (label, cell, align, spawn, header) => ({ label, cell, align, spawn, header });
+
+export function ResponsiveTable({ cols, rows, footer, empty, className = '', rowProps, cardProps, tableWrapProps }) {
+  const isSpawn = (c) => SPAWN_POS.includes(c.spawn);
+  const primary = cols.find(isSpawn);
+  const mids = cols.filter((c) => c.spawn === 'mid');
+  const stats = cols.filter((c) => c.spawn === 'grid');
+  const rest = cols.filter((c) => !isSpawn(c));
+  const keyOf = (r, i) => (r && (r.id ?? r.key)) ?? i;
+
+  const CardRow = ({ r, i }) => (
+    <div
+      className="rounded-xl border border-line bg-surface p-3.5 shadow-panel"
+      {...(cardProps ? cardProps(r, i) : {})}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {primary && <div className="min-w-0">{primary.cell(r, i)}</div>}
+          {mids.map((c) => (
+            <div key={c.label} className="mt-1 min-w-0 text-[12px] text-ink-soft">{c.cell(r, i)}</div>
+          ))}
+        </div>
+        {stats.length > 0 && (
+          <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-1">
+            {stats.map((c) => (
+              <div key={c.label}>
+                <p className="text-[10.5px] uppercase tracking-wider text-ink-faint">{c.label}</p>
+                <div className="num text-right text-[13px]">{c.cell(r, i)}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {rest.length > 0 && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-2.5">
+          {rest.map((c) => {
+            const cell = c.cell(r, i);
+            // Skip placeholder chips so cards stay tight when a field is empty.
+            if (cell == null || cell === '—' || cell === '') return null;
+            return (
+              <span key={c.label} className="flex min-w-0 items-center gap-1.5 text-[12px] text-ink-soft">
+                <span className="shrink-0 text-ink-faint">{c.label}</span>
+                <span className="min-w-0 truncate">{cell}</span>
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {/* Phone: stacked cards. */}
+      <div className={cx('space-y-2.5 md:hidden', className)}>
+        {rows.length === 0 && empty}
+        {rows.map((r, i) => (
+          <div key={keyOf(r, i)} {...(rowProps ? rowProps(r, i) : {})}>
+            <CardRow r={r} i={i} />
+          </div>
+        ))}
+        {footer && <div className="pt-1">{footer}</div>}
+      </div>
+      {/* md+: the table. */}
+      <TableWrap className={cx(tableWrapProps?.className, 'hidden md:block')} {...tableWrapProps}>
+        <thead>
+          <tr>{cols.map((c) => <Th key={c.label} align={c.align}>{c.header ? c.header() : c.label}</Th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={keyOf(r, i)} {...(rowProps ? rowProps(r, i) : {})}>
+              {cols.map((c) => <Td key={c.label} align={c.align}>{c.cell(r, i)}</Td>)}
+            </tr>
+          ))}
+          {rows.length === 0 && (
+            <tr><Td colSpan={cols.length} className="py-10 text-center text-ink-faint">{empty}</Td></tr>
+          )}
+          {footer && <tr><Td colSpan={cols.length}>{footer}</Td></tr>}
+        </tbody>
+      </TableWrap>
+    </>
+  );
+}
+
 export function TableWrap({ children, className = '' }) {
   return (
     <div className={cx('overflow-x-auto rounded-xl border border-line bg-surface contain-scroll', className)}>

@@ -172,3 +172,40 @@ BEGIN
   END IF;
 END
 $$;
+
+-- ── Shop payment pattern (SECURITY INVOKER) ────────────────────────────
+-- How a shop usually pays, from its settled history: shares of cash vs
+-- online vs cheque in collected money, how many bills it has settled, and
+-- whether it leans on credit notes. Pass p_salesman_id to scope a salesman
+-- to his own route's history (NULL sees everything — admins). Kept as SQL
+-- so it runs identically under RLS and owner connections.
+CREATE OR REPLACE FUNCTION app_shop_payment_pattern(p_shop_id integer, p_salesman_id integer DEFAULT NULL)
+RETURNS TABLE (
+  bills_settled bigint,
+  cash numeric,
+  online numeric,
+  cheque numeric,
+  credit_note numeric,
+  total numeric,
+  last_collection_date text
+)
+LANGUAGE sql STABLE SET search_path = public
+AS $$
+  SELECT
+    COUNT(DISTINCT co.bill_id)::bigint,
+    COALESCE(SUM(co.amount) FILTER (WHERE co.mode = 'cash'), 0),
+    COALESCE(SUM(co.amount) FILTER (WHERE co.mode = 'online'), 0),
+    COALESCE(SUM(co.amount) FILTER (WHERE co.mode = 'cheque'), 0),
+    COALESCE(SUM(co.amount) FILTER (WHERE co.mode = 'credit_note'), 0),
+    COALESCE(SUM(co.amount), 0),
+    MAX(co.collection_date)::text
+  FROM collections co
+  JOIN bills b ON b.id = co.bill_id
+  WHERE b.shop_id = p_shop_id
+    AND ($2::int IS NULL OR b.salesman_id = $2)
+    AND NOT EXISTS (
+      SELECT 1 FROM cancellations x
+      WHERE x.bill_id = co.bill_id AND x.amount >= b.amount
+    )
+  GROUP BY b.shop_id;
+$$;

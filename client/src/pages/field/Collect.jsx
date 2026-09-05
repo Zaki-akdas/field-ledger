@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useApi, useTitle, fileToCompressedDataUrl, newId } from '../../lib/hooks.js';
 import { useSync, useToast } from '../../lib/context.jsx';
@@ -52,9 +52,52 @@ export default function Collect() {
   const [credit, setCredit] = useState({ amount: '', ref_no: '', note: '' });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [ratio, setRatio] = useState(null);        // cash % of the split — null = untouched
+  const [usual, setUsual] = useState(null);        // this shop's learned payment pattern
+  const [usualDone, setUsualDone] = useState(false); // auto-applied at most once per visit
 
   const bill = data?.bill;
   const outstanding = bill ? Math.max(0, bill.expected_amount - bill.collected_amount) : 0;
+
+  // This shop's usual payment mix, from its settled history — offered as a
+  // one-tap chip and auto-filled the first time the screen opens.
+  useEffect(() => {
+    let alive = true;
+    if (bill?.shop_id) {
+      api.get(`/shops/${bill.shop_id}/payment-pattern`)
+        .then((r) => { if (alive) setUsual(r.pattern); })
+        .catch(() => { /* offline: the chips just lose the Usual option */ });
+    }
+    return () => { alive = false; };
+  }, [bill?.shop_id]);
+
+  const usualCashPct = usual && usual.total > 0 ? Math.round((usual.cash / usual.total) * 100) : null;
+
+  // Auto-fill the usual split once, when the screen opens clean. A shop that
+  // always pays cash gets no auto-fill (nothing to split); a revisit with a
+  // draft in progress is never overwritten.
+  useEffect(() => {
+    if (!bill || usualDone) return;
+    const touched = online_.amount || cheque.amount || credit.amount
+      || Object.values(counts).some((c) => Number(c) > 0);
+    if (touched) { setUsualDone(true); return; }
+    const pct = usualCashPct;
+    if (pct == null || pct >= 100) return;
+    const cashAmt = Math.ceil((outstanding * pct) / 100);
+    const onlineAmt = outstanding - cashAmt;
+    if (onlineAmt <= 0) return;
+    setRatio(pct);
+    setModes((m) => {
+      const next = new Set(m);
+      next.add('cash');
+      next.add('online');
+      return MODES.map((x) => x.key).filter((k) => next.has(k));
+    });
+    setCounts(decompose(cashAmt));
+    setOnlineEntry((o) => ({ ...o, amount: String(onlineAmt) }));
+    setUsualDone(true);
+    push(`Usual here: ${pct}% cash · ${100 - pct}% online — filled it in.`, 'success');
+  }, [bill, usualDone, usualCashPct, outstanding, counts, online_, cheque, credit, push]);
 
   const cashTotal = useMemo(() => totalOf(counts), [counts]);
   const total = useMemo(
@@ -62,23 +105,24 @@ export default function Collect() {
     [cashTotal, online_, cheque, credit],
   );
 
-  // 50/50 split: whatever the other modes haven't covered, split evenly
-  // between cash and online. The odd rupee goes to cash — notes and coins
-  // absorb it more naturally than a bank transfer.
+  // Custom split at the chosen ratio: whatever the other modes haven't
+  // covered is divided cash/online. The odd rupee goes to cash — notes and
+  // coins absorb it more naturally than a bank transfer.
   const otherTotal = (Number(cheque.amount) || 0) + (Number(credit.amount) || 0);
   const restOutstanding = Math.max(0, outstanding - otherTotal);
-  const cashHalf = Math.ceil(restOutstanding / 2);
-  const onlineHalf = restOutstanding - cashHalf;
-  const canSplit = restOutstanding > 1;
+  const pct = ratio ?? 50;
+  const cashShare = Math.ceil((restOutstanding * pct) / 100);
+  const onlineShare = restOutstanding - cashShare;
+  const canSplit = restOutstanding > 1 && onlineShare > 0;
   const applySplit = () => {
     setModes((m) => {
       const next = new Set(m);
-      if (cashHalf > 0) next.add('cash');
-      if (onlineHalf > 0) next.add('online');
+      if (cashShare > 0) next.add('cash');
+      if (onlineShare > 0) next.add('online');
       return MODES.map((x) => x.key).filter((k) => next.has(k));
     });
-    if (cashHalf > 0) setCounts(decompose(cashHalf));
-    if (onlineHalf > 0) setOnlineEntry((o) => ({ ...o, amount: String(onlineHalf) }));
+    if (cashShare > 0) setCounts(decompose(cashShare));
+    if (onlineShare > 0) setOnlineEntry((o) => ({ ...o, amount: String(onlineShare) }));
   };
 
   const toggleMode = (key) => setModes((m) => (m.includes(key) ? m.filter((x) => x !== key) : [...m, key]));
@@ -189,15 +233,43 @@ export default function Collect() {
         </div>
         <p className="mt-1.5 text-[12px] text-ink-faint">Pick any combination — most bills are split.</p>
         {canSplit && (
-          <button
-            type="button"
-            onClick={applySplit}
-            className="anim-press mt-2.5 flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink-soft transition-colors hover:border-line-strong hover:text-ink active:bg-paper"
-          >
-            Split 50/50 ·
-            <span className="num">₹{money(cashHalf)}</span> cash +
-            <span className="num">₹{money(onlineHalf)}</span> online
-          </button>
+          <div className="anim-fade mt-2.5 rounded-lg border border-line bg-surface p-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[...new Set([25, 50, 75, ...(usualCashPct != null ? [usualCashPct] : [])])].sort((a, b) => a - b).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setRatio(p)}
+                  aria-pressed={pct === p}
+                  className={cx(
+                    'num h-9 rounded-full border px-3 text-[12.5px] font-medium transition-colors active:scale-[0.97]',
+                    pct === p ? 'border-ink bg-ink text-paper' : 'border-line bg-paper text-ink-soft hover:border-line-strong active:bg-paper',
+                  )}
+                >
+                  {usualCashPct === p ? `Usual ${p}/${100 - p}` : `${p}/${100 - p}`}
+                </button>
+              ))}
+              <span className="ml-auto text-[11.5px] text-ink-faint">cash / online</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={pct}
+              onChange={(e) => setRatio(Number(e.target.value))}
+              aria-label="Cash share of the split"
+              className="mt-3 w-full accent-ink"
+            />
+            <div className="flex justify-between text-[11px] text-ink-faint">
+              <span>all cash</span>
+              <span className="num">{pct}/{100 - pct}</span>
+              <span>all online</span>
+            </div>
+            <Btn size="sm" variant="ghost" block className="mt-2.5" onClick={applySplit}>
+              Split {pct}/{100 - pct} ·{'\u00A0'}₹{money(cashShare)} cash + ₹{money(onlineShare)} online
+            </Btn>
+          </div>
         )}
       </div>
 

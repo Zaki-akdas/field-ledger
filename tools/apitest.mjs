@@ -295,6 +295,37 @@ async function main() {
     check('Split collection stores both modes', splitModes === 'cash,online', splitModes);
   }
 
+  /* ----------------------------------------------- shop payment pattern --- */
+  // Each sandbox shop's learned pattern must mirror exactly its settled
+  // history: the CSV shop paid one bill all-cash; the PDF shop settled one
+  // bill as a cash+online split.
+  const cashShopPat = (await call('GET', `/shops/${bill.shop_id}/payment-pattern`, { token: S })).data.pattern;
+  check('All-cash shop learns an all-cash pattern',
+    cashShopPat && cashShopPat.bills_settled === 1 && Math.abs(cashShopPat.cash - amount) < 0.01
+      && cashShopPat.online === 0 && Math.abs(cashShopPat.total - amount) < 0.01,
+    JSON.stringify(cashShopPat));
+
+  if (splitBill) {
+    const splitCash = Math.round(splitBill.expected_amount / 2);
+    const pat = (await call('GET', `/shops/${splitBill.shop_id}/payment-pattern`, { token: S })).data.pattern;
+    check('Split shop learns the mixed pattern',
+      pat && pat.bills_settled === 1 && pat.cash >= splitCash - 0.01 && pat.online >= splitBill.expected_amount - splitCash - 0.01
+        && Math.abs(pat.total - (pat.cash + pat.online + pat.cheque + pat.credit_note)) < 0.01,
+      JSON.stringify(pat));
+
+    // Route scoping: the same shop is invisible to another salesman's lens.
+    const other = await login('SLM-02', 'field123');
+    const otherPat = (await call('GET', `/shops/${splitBill.shop_id}/payment-pattern`, { token: other.data.token })).data.pattern;
+    check('A salesman cannot read another route\'s shop pattern', otherPat === null, JSON.stringify(otherPat));
+
+    // A shop with no settled bills has no pattern yet.
+    const fresh = (await call('GET', `/bills?q=${encodeURIComponent(`${pdfInvoice}-9002`)}`, { token: S })).data.bills[0];
+    if (fresh) {
+      const none = (await call('GET', `/shops/${fresh.shop_id}/payment-pattern`, { token: S })).data.pattern;
+      check('Shop with no settled bills returns a null pattern', none === null, JSON.stringify(none));
+    }
+  }
+
   /* ------------------------------------------------------- exports --- */
   for (const report of ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection']) {
     const x = await call('GET', `/export/${report}?format=xlsx&${RANGE}`, { token: A });

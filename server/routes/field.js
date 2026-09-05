@@ -274,6 +274,28 @@ router.get('/salesmen', requireRole('admin'), handle(async (req, res) => {
   res.json({ salesmen: rows });
 }));
 
+/* ------------------------------------------------- shop payment pattern --- */
+
+// How this shop usually pays (cash/online/cheque/credit-note shares over its
+// settled history). Powers the Collect screen's "usual split" suggestion.
+// Salesmen are scoped to their own route's history inside the SQL itself
+// (correct under RLS and owner connections alike); admins see every shop.
+// Shops with no settled bills return a null pattern.
+router.get('/shops/:id/payment-pattern', handle(async (req, res) => {
+  const scope = req.user.role === 'admin' ? null : req.user.id;
+  const rows = await qx('SELECT * FROM app_shop_payment_pattern($1, $2)', [Number(req.params.id), scope]);
+  const r = rows.rows[0] || null;
+  res.json({ pattern: r ? {
+    bills_settled: Number(r.bills_settled),
+    cash: Number(r.cash),
+    online: Number(r.online),
+    cheque: Number(r.cheque),
+    credit_note: Number(r.credit_note),
+    total: Number(r.total),
+    last_collection_date: r.last_collection_date,
+  } : null });
+}));
+
 /* ------------------------------------------------------------------ UPI --- */
 
 // Payee config for the Collect screen's scannable UPI QR. Deliberately

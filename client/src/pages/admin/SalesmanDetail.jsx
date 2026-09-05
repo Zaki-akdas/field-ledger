@@ -132,7 +132,7 @@ export default function SalesmanDetail() {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <div>
+        <div className="min-w-0">
           <SectionTitle hint={`${data.cancellations.length} bills · ₹${money(data.cancellations.reduce((a, c) => a + c.amount, 0))}`}>
             Cancellations
           </SectionTitle>
@@ -157,7 +157,7 @@ export default function SalesmanDetail() {
           )}
         </div>
 
-        <div>
+        <div className="min-w-0">
           <SectionTitle hint={`${data.shortages.length} lines · ₹${money(data.shortages.reduce((a, c) => a + c.amount, 0))}`}>
             Shortages
           </SectionTitle>

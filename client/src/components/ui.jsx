@@ -85,7 +85,7 @@ export function Btn({
   children, variant = 'secondary', size = 'md', block = false, className = '', ...rest
 }) {
   const sizes = {
-    sm: 'h-9 px-3 text-[13px]',
+    sm: 'h-10 px-3 text-[13px]',
     md: 'h-11 px-4 text-[15px]',
     lg: 'h-12 px-5 text-[15px]',
   };

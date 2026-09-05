@@ -72,7 +72,7 @@ export default function Reconciliation() {
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <div>
+        <div className="min-w-0">
           <SectionTitle hint="How the money came in">Collected by mode</SectionTitle>
           <TableWrap>
             <thead>
@@ -106,7 +106,7 @@ export default function Reconciliation() {
           </TableWrap>
         </div>
 
-        <div>
+        <div className="min-w-0">
           <SectionTitle hint="One row per day — where the variance sits">Day by day</SectionTitle>
           <TableWrap className="max-h-[330px] overflow-y-auto">
             <thead>

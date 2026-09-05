@@ -9,7 +9,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: true,
-    hmr: { protocol: 'wss', clientPort: 443 },
+    // Only force TLS HMR when tunneled through HTTPS (e.g. Vercel preview).
+    // Locally this breaks hot reload — plain ws on the dev port is correct.
+    ...(process.env.VITE_HMR_TLS ? { hmr: { protocol: 'wss', clientPort: 443 } } : {}),
     proxy: {
       '/api': { target: 'http://127.0.0.1:4000', changeOrigin: false },
       '/uploads': { target: 'http://127.0.0.1:4000', changeOrigin: false },

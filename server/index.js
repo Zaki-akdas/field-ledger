@@ -7,7 +7,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 // ── Database check ─────────────────────────────────────────────────────
 const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM bills');
 if (rows[0].n === 0) {
-  console.log('Empty database — run seed: node server/seed.js --force');
+  console.log('Empty database — provision accounts with: node tools/provision-accounts.mjs');
 }
 
 // ── Start server ───────────────────────────────────────────────────────

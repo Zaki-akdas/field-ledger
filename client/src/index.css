@@ -260,3 +260,62 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ─────────────────────────────────────────────── motion ──
+ * Small, purposeful motion: content rises into place, dialogs scale from
+ * where you tapped, toasts slide up. All of it is disabled by the global
+ * prefers-reduced-motion guard above.
+ */
+@keyframes fade-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@layer utilities {
+  .anim-rise {
+    animation: fade-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .anim-fade {
+    animation: fade-in 0.3s ease-out both;
+  }
+  .anim-scale {
+    animation: scale-in 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .anim-slide-up {
+    animation: slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  /* Press feedback for buttons and tappable rows. */
+  .anim-press {
+    transition: transform 0.08s ease;
+  }
+  .anim-press:active {
+    transform: scale(0.97);
+  }
+  /* Children rise in sequence — capped so long lists never feel slow. */
+  .stagger > * {
+    animation: fade-rise 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .stagger > *:nth-child(1)  { animation-delay: 0ms; }
+  .stagger > *:nth-child(2)  { animation-delay: 40ms; }
+  .stagger > *:nth-child(3)  { animation-delay: 80ms; }
+  .stagger > *:nth-child(4)  { animation-delay: 120ms; }
+  .stagger > *:nth-child(5)  { animation-delay: 160ms; }
+  .stagger > *:nth-child(6)  { animation-delay: 200ms; }
+  .stagger > *:nth-child(7)  { animation-delay: 240ms; }
+  .stagger > *:nth-child(8)  { animation-delay: 280ms; }
+  .stagger > *:nth-child(9)  { animation-delay: 320ms; }
+  .stagger > *:nth-child(10) { animation-delay: 360ms; }
+  .stagger > *:nth-child(n + 11) { animation-delay: 400ms; }
+}

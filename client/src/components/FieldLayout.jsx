@@ -170,7 +170,7 @@ export default function FieldLayout() {
         </div>
       )}
 
-      <main className="mx-auto max-w-[560px] px-3 pb-28 pt-3 sm:px-4 sm:pt-4">
+      <main key={location.pathname} className="anim-rise mx-auto max-w-[560px] px-3 pb-28 pt-3 sm:px-4 sm:pt-4">
         <Outlet context={{ pendingCount, summary: data, reloadSummary: reload }} />
       </main>
 
@@ -181,7 +181,7 @@ export default function FieldLayout() {
               key={item.to}
               to={item.to}
               className={({ isActive }) => cx(
-                'flex-1 flex flex-col items-center justify-center gap-1 py-2 text-[11.5px] font-medium transition-colors min-h-[48px] touch-target',
+                'anim-press flex-1 flex flex-col items-center justify-center gap-1 py-2 text-[11.5px] font-medium transition-colors min-h-[48px] touch-target',
                 isActive ? 'text-ink' : 'text-ink-faint hover:text-ink-soft',
               )}
             >

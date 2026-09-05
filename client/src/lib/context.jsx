@@ -66,7 +66,7 @@ export function ToastProvider({ children }) {
           <div
             key={t.id}
             role="status"
-            className={`pointer-events-auto max-w-[92vw] rounded-lg px-4 py-3 text-sm shadow-raise border ${
+            className={`anim-slide-up pointer-events-auto max-w-[92vw] rounded-lg px-4 py-3 text-sm shadow-raise border ${
               t.tone === 'error' ? 'bg-attention-tint border-attention/40 text-attention-deep'
                 : t.tone === 'success' ? 'bg-settled-tint border-settled/40 text-settled-deep'
                   : 'bg-ink text-paper border-ink'

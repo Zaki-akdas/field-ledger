@@ -93,7 +93,7 @@ export function Btn({
     <button
       type="button"
       className={cx(
-        'inline-flex items-center justify-center gap-2 rounded-lg border font-medium transition-colors',
+        'anim-press inline-flex items-center justify-center gap-2 rounded-lg border font-medium transition-colors',
         'disabled:opacity-45 disabled:cursor-not-allowed select-none',
         sizes[size], BTN[variant], block && 'w-full', className,
       )}
@@ -320,6 +320,7 @@ export function ResponsiveTable({ cols, rows, footer, empty, className = '', row
   const stats = cols.filter((c) => c.spawn === 'grid');
   const rest = cols.filter((c) => !isSpawn(c));
   const keyOf = (r, i) => (r && (r.id ?? r.key)) ?? i;
+  const stackCls = cx('stagger space-y-2.5 md:hidden', className);
 
   const CardRow = ({ r, i }) => (
     <div
@@ -365,7 +366,7 @@ export function ResponsiveTable({ cols, rows, footer, empty, className = '', row
   return (
     <>
       {/* Phone: stacked cards. */}
-      <div className={cx('space-y-2.5 md:hidden', className)}>
+      <div className={stackCls}>
         {rows.length === 0 && empty}
         {rows.map((r, i) => (
           <div key={keyOf(r, i)} {...(rowProps ? rowProps(r, i) : {})}>

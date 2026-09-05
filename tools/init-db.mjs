@@ -41,4 +41,4 @@ for (const t of tables) {
 }
 
 await client.end();
-console.log('[init-db] Schema ready. Seed with: node server/seed.js --force');
+console.log('[init-db] Schema ready. Provision accounts with: node tools/provision-accounts.mjs');

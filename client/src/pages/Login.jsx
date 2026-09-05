@@ -4,11 +4,6 @@ import { useAuth } from '../lib/context.jsx';
 import { useDarkMode } from '../lib/hooks.js';
 import { Btn, ErrorNote, Field, Input } from '../components/ui.jsx';
 
-const DEMO = [
-  { code: 'admin', password: 'admin123', who: 'Back office — full book' },
-  { code: 'SLM-01', password: 'field123', who: 'Ramesh Yadav — field app' },
-];
-
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
@@ -38,8 +33,6 @@ export default function Login() {
     }
   };
 
-  const fillDemo = (d) => { setCode(d.code); setPassword(d.password); setError(null); };
-
   return (
     <div className="min-h-full lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
       {/* The product statement — ink panel, no decoration. */}
@@ -66,7 +59,7 @@ Variance = Expected − Actual`}
       </section>
 
       <section className="flex items-center justify-center px-5 py-8 sm:px-10 sm:py-10">
-        <div className="w-full max-w-sm">
+        <div className="anim-rise w-full max-w-sm">
           <div className="flex items-center justify-between mb-6">
             <div className="lg:hidden">
               <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-ink-faint">Field Ledger</p>
@@ -121,25 +114,9 @@ Variance = Expected − Actual`}
             </Btn>
           </form>
 
-          <div className="mt-8 rounded-xl border border-line bg-surface p-4">
-            <p className="text-[12px] font-medium uppercase tracking-wider text-ink-faint">Demo logins</p>
-            <div className="mt-3 space-y-2">
-              {DEMO.map((d) => (
-                <button
-                  key={d.code}
-                  type="button"
-                  onClick={() => fillDemo(d)}
-                  className="flex w-full items-center justify-between gap-3 rounded-lg border border-line px-3 py-3 min-h-[52px] text-left hover:border-line-strong hover:bg-paper active:bg-paper/70 touch-target"
-                >
-                  <span>
-                    <span className="num block text-[13.5px] font-medium">{d.code}</span>
-                    <span className="block text-[12px] text-ink-faint">{d.who}</span>
-                  </span>
-                  <span className="text-[12px] text-ink-faint">Use</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="mt-8 text-[12.5px] text-ink-faint">
+            Lost your login? Ask the back office to reset it.
+          </p>
         </div>
       </section>
     </div>

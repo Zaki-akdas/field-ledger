@@ -36,20 +36,23 @@ For a production-style run: `npm run build && npm start` — Express then serves
 from `:4000` as well as the API.
 
 The server needs a PostgreSQL database. Point `DATABASE_URL` at one (Supabase works out of the
-box), then bootstrap the schema and seed the demo ledger:
+box), then bootstrap the schema and create the login accounts:
 
 ```bash
 npm run db:init       # apply server/schema.sql + column migrations (safe to re-run)
 npm run db:migrate    # upgrade an existing DB's money columns to NUMERIC(12,2)
-npm run seed          # 6 salesmen, 10 days of demo data (--force wipes first)
+npm run provision     # login accounts + product catalog — no demo data
 ```
 
 `db:init` is idempotent and also runs the column migrations, so re-running it keeps an older
 database current (it is a no-op once the money columns are already `NUMERIC(12,2)`).
 
+The book starts empty — fill it by uploading real dispatch sheets (Excel/CSV/PDF) on the Upload
+bills page, per salesman.
+
 Your real connection string lives in `.env` (gitignored) — never commit it.
 
-### Demo logins
+### Login accounts
 
 | Login code | Password | What you get |
 |---|---|---|
@@ -211,12 +214,11 @@ still serves them from disk.
 
 ```
 server/
-  index.js            Express app, static serving, error handling, auto-seed
+  index.js            Express app, static serving, error handling
   db.js               schema + the reconciliation queries (reconcile, billRows, cashRollup)
   mutations.js        every write operation + its validation (shared by HTTP and sync)
   routes/             auth · field · admin · sync · exports
   import.js           tolerant spreadsheet → bills importer
-  seed.js             deterministic demo ledger (mulberry32, seeded)
 client/src/
   lib/                api · outbox (offline queue) · context (auth/toast/sync) · format
   components/         ui primitives · DenomGrid · StepRail · FieldLayout · AdminLayout

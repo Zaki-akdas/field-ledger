@@ -11,7 +11,7 @@
     "dev": "concurrently -n API,WEB -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
     "dev:api": "node --env-file-if-exists=.env server/index.js",
     "dev:web": "vite",
-    "seed": "node --env-file-if-exists=.env server/seed.js --force",
+    "provision": "node --env-file-if-exists=.env tools/provision-accounts.mjs",
     "build": "vite build",
     "start": "NODE_ENV=production node --env-file-if-exists=.env server/index.js",
     "build:smoke": "vite build --config vite.smoke.config.js",

@@ -134,11 +134,13 @@ async function run() {
   check('Salesman-wise table present', rec && /Salesman-wise/.test(t));
 
   for (const [label, needle] of [
-    ['Collection report', 'Grand total'],
-    ['Salesmen', 'Billed'],
+    // Needles come from page headers/section titles that render regardless of
+    // whether the book has data — smoke must pass on an empty ledger too.
+    ['Collection report', 'billed'],
+    ['Salesmen', 'in this period'],
     ['Bills', 'Invoice'],
-    ['Cancellations', 'Reason'],
-    ['Shortages', 'Product'],
+    ['Cancellations', 'off the book'],
+    ['Shortages', 'deducted from expected'],
     ['Cash rollup', 'Denomination'],
     ['Upload bills', 'dispatch sheet'],
   ]) {

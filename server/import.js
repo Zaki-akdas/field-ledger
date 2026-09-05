@@ -157,7 +157,13 @@ export async function commitBillRows(rows, { salesmanId, file, skipped = [] } = 
       const row = await billRow(out.bill.id);
       if (row) createdBills.push(row);
     } catch (err) {
-      skipped.push({ row: 0, invoice_no: b.invoiceNo, reason: err.message });
+      // createBill dedupes with SELECT-then-INSERT; if the SELECT misses (e.g.
+      // a concurrent upload wins the race) the INSERT hits the unique invoice
+      // constraint. Surface the friendly dedupe message instead of raw SQL.
+      const reason = err && err.code === '23505'
+        ? `Invoice ${b.invoiceNo} is already in the book. Use a different invoice number.`
+        : err.message;
+      skipped.push({ row: 0, invoice_no: b.invoiceNo, reason });
     }
   }
 

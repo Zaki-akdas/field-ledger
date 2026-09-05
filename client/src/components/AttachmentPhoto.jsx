@@ -300,7 +300,7 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
 
       {isActive && url && (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-4"
+          className="anim-fade fixed inset-0 z-[60] flex items-center justify-center bg-ink/80 p-4"
           role="dialog"
           aria-modal="true"
           aria-label={alt}
@@ -317,7 +317,7 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
               aria-label="Previous photo"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => { e.stopPropagation(); photoStep(-1); }}
-              className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-ink/60 text-[24px] leading-none text-paper hover:bg-ink/85"
+              className="anim-fade absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-ink/60 text-[24px] leading-none text-paper hover:bg-ink/85"
             >
               ‹
             </button>
@@ -326,7 +326,7 @@ export default function AttachmentPhoto({ name, className = '', alt = 'Attachmen
             ref={imgRef}
             src={url}
             alt={alt}
-            className="max-h-[92vh] max-w-full select-none rounded-lg object-contain shadow-raise"
+            className="anim-scale max-h-[92vh] max-w-full select-none rounded-lg object-contain shadow-raise"
             draggable={false}
             onDragStart={stopDrag}
             onClick={(e) => e.stopPropagation()}

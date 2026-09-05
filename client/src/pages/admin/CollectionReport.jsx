@@ -101,7 +101,7 @@ export default function CollectionReport() {
               <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-ink-soft">
                 {dateLabel(g.date)} · {g.rows.length} {g.rows.length === 1 ? 'bill' : 'bills'}
               </p>
-              <div className="space-y-2.5">
+              <div className="stagger space-y-2.5">
                 {g.rows.map((b) => <BillCard key={b.id} b={b} />)}
               </div>
               <div className="mt-2.5 flex items-center justify-between rounded-xl border border-line bg-paper/60 px-3.5 py-2.5 text-[12.5px]">

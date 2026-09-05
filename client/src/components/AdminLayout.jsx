@@ -117,7 +117,7 @@ export default function AdminLayout() {
               <button type="button" onClick={logout} className="text-[12px] text-ink-faint underline">Sign out</button>
             </div>
           </div>
-          <nav className="flex gap-0.5 overflow-x-auto px-2 py-2 no-scrollbar snap-x-scroll contain-scroll lg:block lg:space-y-0.5 lg:px-2 lg:py-3">
+          <nav className="stagger flex gap-0.5 overflow-x-auto px-2 py-2 no-scrollbar snap-x-scroll contain-scroll lg:block lg:space-y-0.5 lg:px-2 lg:py-3">
             {NAV.map((item) => (
               <NavLink
                 key={item.to}
@@ -214,7 +214,7 @@ export default function AdminLayout() {
             </div>
           </header>
 
-          <main className="px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-6">
+          <main key={location.pathname} className="anim-rise px-3 py-4 sm:px-4 sm:py-5 lg:px-7 lg:py-6">
             <Outlet />
           </main>
         </div>

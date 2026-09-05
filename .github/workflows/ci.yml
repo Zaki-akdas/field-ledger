@@ -78,8 +78,8 @@ jobs:
         # COMMIT or ROLLBACK on the pooled connection.
         run: node tools/leaktest.mjs
 
-      - name: Seed the demo ledger
-        run: node server/seed.js --force
+      - name: Provision login accounts (no demo data)
+        run: node tools/provision-accounts.mjs
 
       - name: Start API server
         run: |

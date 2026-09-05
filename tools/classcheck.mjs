@@ -95,9 +95,10 @@ if (real.length === 0) {
   }
 }
 
-// Explicitly assert the responsive hiding rules survived compilation.
+// Explicitly assert the responsive rules survived compilation — especially
+// the md:hidden / md:table-cell pair that switches admin tables to cards.
 const required = [
-  '.md\\:table-cell', '.lg\\:table-cell', '.xl\\:table-cell', '.sm\\:table-cell',
+  '.md\\:table-cell', '.md\\:hidden', '.lg\\:table-cell', '.xl\\:table-cell',
   '.sm\\:border-b-0', '.sm\\:border-r', '.sm\\:grid-cols-4', '.sm\\:text-\\[34px\\]',
   '.text-\\[30px\\]', '.w-full', '.flex-1',
 ];

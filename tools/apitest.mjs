@@ -142,64 +142,10 @@ async function main() {
   check('Salesman rows sum to the period',
     Math.abs(rec.salesmen.reduce((a, s) => a + s.expected, 0) - rec.expected) < 0.01);
 
-  /* --------------------------------------------------------- writes --- */
-  const open = (await call('GET', '/bills?status=pending', { token: S })).data.bills;
-  check('Salesman sees only their own route', open.every((b) => b.salesman_id === slm.data.user.id));
-
-  const bill = open[0];
-  const amount = Math.round(bill.expected_amount);
-
-  const noUtr = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, entries: [{ mode: 'online', amount: 500 }] } });
-  check('Online without UTR is refused', noUtr.status === 422 && /UTR/.test(noUtr.data.error), noUtr.data.error);
-
-  const badCash = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, entries: [{ mode: 'cash', amount, denominations: [{ denom: 500, count: 1 }] }] } });
-  check('Cash that does not add up is refused', badCash.status === 422 && /Re-count/.test(badCash.data.error), badCash.data.error);
-
-  const over = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, entries: [{ mode: 'cash', amount: amount + 5000, denominations: denomsFor(amount + 5000) }] } });
-  check('Over-collection is refused', over.status === 422 && /outstanding/.test(over.data.error), over.data.error);
-
-  const declaredMismatch = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, declared_total: amount + 100, entries: [{ mode: 'cash', amount, denominations: [{ denom: 500, count: Math.ceil(amount / 500) }, { denom: 10, count: 0 }] }] } });
-  check('Declared total that disagrees is refused', declaredMismatch.status === 422 || declaredMismatch.status === 200);
-
-  const cid = `test-${Date.now()}`;
-  const collect = await call('POST', '/collections', {
-    token: S,
-    body: {
-      bill_id: bill.id,
-      client_id: cid,
-      entries: [{ mode: 'cash', amount, denominations: denomsFor(amount) }],
-    },
-  });
-  check('Valid cash collection saves', collect.status === 201, collect.data.error || '');
-  if (collect.status === 201) {
-    check('Bill moves to delivered', collect.data.bill.status === 'delivered', collect.data.bill.status);
-    check('Balance goes to zero', Math.abs(collect.data.bill.balance) < 1, String(collect.data.bill.balance));
-  }
-
-  /* --------------------------------------------------------- sync --- */
-  const replay = await call('POST', '/sync', { token: S, body: { ops: [{ id: cid, type: 'collection', payload: { bill_id: bill.id, entries: [{ mode: 'cash', amount, denominations: denomsFor(amount) }] } }] } });
-  check('Replaying a synced collection reports deduped, not an error',
-    replay.data.results[0].ok === true && replay.data.results[0].deduped === true,
-    JSON.stringify(replay.data.results[0]).slice(0, 140));
-
-  const after = (await call('GET', `/bills/${bill.id}`, { token: S })).data;
-  check('Only one cash row exists after replay', after.collections.length === 1, `${after.collections.length} rows`);
-
-  /* ------------------------------------------------- cancel / short --- */
-  const cancelBlocked = await call('POST', '/cancellations', { token: S, body: { bill_id: bill.id, reason: 'Test' } });
-  check('Cannot cancel a bill that has money against it', cancelBlocked.status === 422, String(cancelBlocked.status));
-
-  const nextOpen = (await call('GET', '/bills?status=pending', { token: S })).data.bills[0];
-  if (nextOpen) {
-    const cancelled = await call('POST', '/cancellations', { token: S, body: { bill_id: nextOpen.id, reason: 'Shop closed — three visits' } });
-    check('Cancelling an untouched bill works', cancelled.status === 201 && cancelled.data.bill.status === 'cancelled');
-    check('Cancelled bill expects nothing', cancelled.status === 201 && cancelled.data.bill.expected_amount === 0);
-    await call('DELETE', `/cancellations/${nextOpen.id}`, { token: S });
-    const restored = (await call('GET', `/bills/${nextOpen.id}`, { token: S })).data;
-    check('Un-cancelling reopens the bill', restored.bill.status === 'pending', restored.bill.status);
-  }
-
   /* ------------------------------------------------------- imports --- */
+  // Imports run FIRST so the write tests below always have their own sandbox
+  // bills to work on — the suite must never collect on (or cancel) a real
+  // book bill, and CI's database may have no book data at all.
   const testInvoice = `INV/TEST/${Date.now()}`;
   const form = new FormData();
   form.append('file', new Blob([`Invoice No,Customer,Amount\n${testInvoice},Test Shop,1000\n`], { type: 'text/csv' }), 't.csv');
@@ -249,8 +195,90 @@ async function main() {
   junkPdf.append('file', new Blob(['this is not a pdf at all'], { type: 'application/pdf' }), 'j.pdf');
   const junkPdfRes = await call('POST', '/bills/upload', { token: S, form: junkPdf });
   check('Unreadable PDF returns a helpful 400',
-    junkPdfRes.status === 400 && /CO-SHIP|couldn't be read/.test(junkPdfRes.data.error),
-    junkPdfRes.data.error);
+    junkPdfRes.status === 400 && /not a readable PDF|CO-SHIP/.test(junkPdfRes.data.error), junkPdfRes.data.error);
+
+  /* --------------------------------------------------------- writes --- */
+  const open = (await call('GET', '/bills?status=pending', { token: S })).data.bills;
+  check('Salesman sees only their own route', open.every((b) => b.salesman_id === slm.data.user.id));
+
+  // Collect on this run's own uploaded test bill, never on a real book bill.
+  const bill = open.find((b) => b.invoice_no === testInvoice);
+  if (!bill) throw new Error(`Sandbox bill ${testInvoice} missing — aborting before any real bill is touched`);
+  const amount = Math.round(bill.expected_amount);
+
+  const noUtr = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, entries: [{ mode: 'online', amount: 500 }] } });
+  check('Online without UTR is refused', noUtr.status === 422 && /UTR/.test(noUtr.data.error), noUtr.data.error);
+
+  const badCash = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, entries: [{ mode: 'cash', amount, denominations: [{ denom: 500, count: 1 }] }] } });
+  check('Cash that does not add up is refused', badCash.status === 422 && /Re-count/.test(badCash.data.error), badCash.data.error);
+
+  const over = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, entries: [{ mode: 'cash', amount: amount + 5000, denominations: denomsFor(amount + 5000) }] } });
+  check('Over-collection is refused', over.status === 422 && /outstanding/.test(over.data.error), over.data.error);
+
+  const declaredMismatch = await call('POST', '/collections', { token: S, body: { bill_id: bill.id, declared_total: amount + 100, entries: [{ mode: 'cash', amount, denominations: [{ denom: 500, count: Math.ceil(amount / 500) }, { denom: 10, count: 0 }] }] } });
+  check('Declared total that disagrees is refused', declaredMismatch.status === 422 || declaredMismatch.status === 200);
+
+  const cid = `test-${Date.now()}`;
+  const collect = await call('POST', '/collections', {
+    token: S,
+    body: {
+      bill_id: bill.id,
+      client_id: cid,
+      entries: [{ mode: 'cash', amount, denominations: denomsFor(amount) }],
+    },
+  });
+  check('Valid cash collection saves', collect.status === 201, collect.data.error || '');
+  if (collect.status === 201) {
+    check('Bill moves to delivered', collect.data.bill.status === 'delivered', collect.data.bill.status);
+    check('Balance goes to zero', Math.abs(collect.data.bill.balance) < 1, String(collect.data.bill.balance));
+  }
+
+  /* --------------------------------------------------------- sync --- */
+  const replay = await call('POST', '/sync', { token: S, body: { ops: [{ id: cid, type: 'collection', payload: { bill_id: bill.id, entries: [{ mode: 'cash', amount, denominations: denomsFor(amount) }] } }] } });
+  check('Replaying a synced collection reports deduped, not an error',
+    replay.data.results[0].ok === true && replay.data.results[0].deduped === true,
+    JSON.stringify(replay.data.results[0]).slice(0, 140));
+
+  const after = (await call('GET', `/bills/${bill.id}`, { token: S })).data;
+  check('Only one cash row exists after replay', after.collections.length === 1, `${after.collections.length} rows`);
+
+  /* ------------------------------------------------- cancel / short --- */
+  const cancelBlocked = await call('POST', '/cancellations', { token: S, body: { bill_id: bill.id, reason: 'Test' } });
+  check('Cannot cancel a bill that has money against it', cancelBlocked.status === 422, String(cancelBlocked.status));
+
+  const nextOpen = (await call('GET', `/bills?q=${encodeURIComponent(`${pdfInvoice}-9003`)}`, { token: S })).data.bills[0];
+  if (nextOpen) {
+    const cancelled = await call('POST', '/cancellations', { token: S, body: { bill_id: nextOpen.id, reason: 'Shop closed — three visits' } });
+    check('Cancelling an untouched bill works', cancelled.status === 201 && cancelled.data.bill.status === 'cancelled');
+    check('Cancelled bill expects nothing', cancelled.status === 201 && cancelled.data.bill.expected_amount === 0);
+    await call('DELETE', `/cancellations/${nextOpen.id}`, { token: S });
+    const restored = (await call('GET', `/bills/${nextOpen.id}`, { token: S })).data;
+    check('Un-cancelling reopens the bill', restored.bill.status === 'pending', restored.bill.status);
+  }
+
+  /* ------------------------------------------------ split collection --- */
+  // One collection, two modes: half cash, half online — the common
+  // "part cash, rest by UPI" shop pattern.
+  const splitBill = (await call('GET', `/bills?q=${encodeURIComponent(`${pdfInvoice}-9001`)}`, { token: S })).data.bills[0];
+  if (splitBill) {
+    const half = Math.round(splitBill.expected_amount / 2);
+    const split = await call('POST', '/collections', {
+      token: S,
+      body: {
+        bill_id: splitBill.id,
+        client_id: `test-split-${Date.now()}`,
+        entries: [
+          { mode: 'cash', amount: half, denominations: denomsFor(half) },
+          { mode: 'online', amount: splitBill.expected_amount - half, ref_no: `UTR-SPLIT-${Date.now()}` },
+        ],
+      },
+    });
+    check('Split collection (cash + online) saves', split.status === 201, split.data?.error || '');
+    check('Split collection settles the bill', split.status === 201 && split.data.bill.status === 'delivered', split.data?.bill?.status);
+    const splitDetail = (await call('GET', `/bills/${splitBill.id}`, { token: S })).data;
+    const splitModes = (splitDetail.collections || []).map((c) => c.mode).sort().join(',');
+    check('Split collection stores both modes', splitModes === 'cash,online', splitModes);
+  }
 
   /* ------------------------------------------------------- exports --- */
   for (const report of ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection']) {
@@ -296,7 +324,7 @@ async function main() {
   const tampered = await fetch(`${ROOT}${(await sign(att.data?.path)).replace(/sig=[a-f0-9]{8}/, 'sig=deadbeef')}`);
   check('Tampered signature is refused (403)', tampered.status === 403, String(tampered.status));
 
-  const target = (await call('GET', `/bills?q=${encodeURIComponent(testInvoice)}`, { token: S })).data.bills[0];
+  const target = (await call('GET', `/bills?q=${encodeURIComponent(`${pdfInvoice}-9002`)}`, { token: S })).data.bills[0];
   if (target) {
     const photoPay = Math.min(400, Math.round(target.expected_amount / 2));
     const off = await call('POST', '/collections', {

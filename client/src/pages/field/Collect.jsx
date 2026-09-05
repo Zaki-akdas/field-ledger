@@ -61,6 +61,25 @@ export default function Collect() {
     [cashTotal, online_, cheque, credit],
   );
 
+  // 50/50 split: whatever the other modes haven't covered, split evenly
+  // between cash and online. The odd rupee goes to cash — notes and coins
+  // absorb it more naturally than a bank transfer.
+  const otherTotal = (Number(cheque.amount) || 0) + (Number(credit.amount) || 0);
+  const restOutstanding = Math.max(0, outstanding - otherTotal);
+  const cashHalf = Math.ceil(restOutstanding / 2);
+  const onlineHalf = restOutstanding - cashHalf;
+  const canSplit = restOutstanding > 1;
+  const applySplit = () => {
+    setModes((m) => {
+      const next = new Set(m);
+      if (cashHalf > 0) next.add('cash');
+      if (onlineHalf > 0) next.add('online');
+      return MODES.map((x) => x.key).filter((k) => next.has(k));
+    });
+    if (cashHalf > 0) setCounts(decompose(cashHalf));
+    if (onlineHalf > 0) setOnlineEntry((o) => ({ ...o, amount: String(onlineHalf) }));
+  };
+
   const toggleMode = (key) => setModes((m) => (m.includes(key) ? m.filter((x) => x !== key) : [...m, key]));
 
   const fillCash = (amount) => setCounts(decompose(amount));
@@ -168,6 +187,17 @@ export default function Collect() {
           })}
         </div>
         <p className="mt-1.5 text-[12px] text-ink-faint">Pick any combination — most bills are split.</p>
+        {canSplit && (
+          <button
+            type="button"
+            onClick={applySplit}
+            className="anim-press mt-2.5 flex h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 text-[13px] font-medium text-ink-soft transition-colors hover:border-line-strong hover:text-ink active:bg-paper"
+          >
+            Split 50/50 ·
+            <span className="num">₹{money(cashHalf)}</span> cash +
+            <span className="num">₹{money(onlineHalf)}</span> online
+          </button>
+        )}
       </div>
 
       {modes.includes('cash') && (

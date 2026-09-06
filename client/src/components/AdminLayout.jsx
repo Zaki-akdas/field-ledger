@@ -19,6 +19,7 @@ const NAV = [
   { to: '/admin/cancellations', label: 'Cancellations' },
   { to: '/admin/shortages', label: 'Shortages' },
   { to: '/admin/cash', label: 'Cash rollup' },
+  { to: '/admin/bank', label: 'Bank' },
   { to: '/admin/upload', label: 'Upload bills' },
 ];
 

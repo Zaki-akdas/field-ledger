@@ -17,6 +17,7 @@ import Me from './pages/field/Me.jsx';
 import EndDay from './pages/field/EndDay.jsx';
 
 import Reconciliation from './pages/admin/Reconciliation.jsx';
+import BankRecon from './pages/admin/BankRecon.jsx';
 import Salesmen from './pages/admin/Salesmen.jsx';
 import SalesmanDetail from './pages/admin/SalesmanDetail.jsx';
 import CollectionReport from './pages/admin/CollectionReport.jsx';
@@ -92,6 +93,7 @@ export default function App() {
               <Route path="shortages" element={<Shortages />} />
               <Route path="cash" element={<CashRollup />} />
               <Route path="upload" element={<AdminUpload />} />
+              <Route path="bank" element={<BankRecon />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

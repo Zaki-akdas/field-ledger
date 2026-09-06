@@ -73,6 +73,21 @@ CREATE TABLE IF NOT EXISTS cash_denominations (
   count INTEGER NOT NULL
 );
 
+-- Office reconciliation: which statement row settled which collection.
+-- Unique per (collection, statement) so re-uploading the same file is a no-op.
+CREATE TABLE IF NOT EXISTS bank_matches (
+  id SERIAL PRIMARY KEY,
+  collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  statement_file TEXT NOT NULL,
+  stmt_amount NUMERIC(12,2) NOT NULL,
+  stmt_date TEXT,
+  stmt_ref TEXT,
+  matched_tier TEXT NOT NULL CHECK (matched_tier IN ('exact','contains','likely')),
+  matched_by INTEGER NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text,
+  UNIQUE (collection_id, statement_file)
+);
+
 CREATE TABLE IF NOT EXISTS short_items (
   id SERIAL PRIMARY KEY,
   bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,

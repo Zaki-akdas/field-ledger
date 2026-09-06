@@ -2,6 +2,9 @@ import { Router } from 'express';
 import { reconcile, cashRollup, round2, q1, q } from '../db.js';
 import { requireAuth, requireRole } from '../auth.js';
 import { todayISO, isoDaysAgo } from '../dates.js';
+import { upload } from '../uploads.js';
+import fs from 'node:fs';
+import { parseStatement, matchStatement, recordMatches } from '../bankImport.js';
 
 export const router = Router();
 router.use(requireAuth, requireRole('admin'));
@@ -170,6 +173,70 @@ router.get('/cash-rollup', async (req, res, next) => {
     res.json({ range: { from, to }, ...(await cashRollup({ from, to, salesmanId })) });
   } catch (err) { next(err); }
 });
+
+/* --------------------------------------------------- bank reconciliation --- */
+
+function handle(fn) {
+  return (req, res, next) => { fn(req, res, next).catch(next); };
+}
+
+// Preview: parse + match a statement, nothing recorded yet. Returns every
+// credit row with its match tier and the collection it landed on.
+router.post('/bank/preview', upload.single('file'), handle(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Choose a statement file (.csv or .xlsx) to upload.' });
+  try {
+    const { rows, skipped } = await parseStatement(req.file.path);
+    const matched = await matchStatement(rows);
+    res.json({
+      file: req.file.originalname,
+      rows: matched,
+      summary: {
+        credits: matched.length,
+        skipped_debits: skipped,
+        exact: matched.filter((m) => m.tier === 'exact').length,
+        contains: matched.filter((m) => m.tier === 'contains').length,
+        likely: matched.filter((m) => m.tier === 'likely').length,
+        unmatched: matched.filter((m) => !m.tier).length,
+        credit_total: round2(matched.reduce((a, m) => a + m.amount, 0)),
+      },
+    });
+  } finally {
+    fs.unlink(req.file.path, () => {});
+  }
+}));
+
+// Confirm: record the office's ticked rows. Idempotent per (collection, file).
+router.post('/bank/confirm', handle(async (req, res) => {
+  const matches = Array.isArray(req.body?.matches) ? req.body.matches : [];
+  const fileName = String(req.body?.file || 'statement').slice(0, 200);
+  const cleaned = matches
+    .filter((m) => m && typeof m === 'object' && m.collection && m.collection.id)
+    .map((m) => ({
+      confirmed: m.confirmed !== false,
+      collection: { id: Number(m.collection.id) },
+      amount: Number(m.amount) || 0,
+      date: m.date || null,
+      ref: m.ref || null,
+      tier: ['exact', 'contains', 'likely'].includes(m.tier) ? m.tier : 'likely',
+    }));
+  if (cleaned.length === 0) return res.status(400).json({ error: 'No matched rows to record.' });
+  res.json(await recordMatches(cleaned, { fileName, user: req.user }));
+}));
+
+// Which collections already have money verified against a statement.
+router.get('/bank/matches', handle(async (_req, res) => {
+  const rows = await q(`
+    SELECT m.id, m.collection_id, m.statement_file, m.stmt_amount::float8 AS stmt_amount,
+           m.stmt_date, m.stmt_ref, m.matched_tier, m.created_at,
+           c.amount::float8 AS collection_amount, c.ref_no, c.collection_date, c.mode,
+           b.invoice_no, s.name AS shop_name
+    FROM bank_matches m
+    JOIN collections c ON c.id = m.collection_id
+    JOIN bills b ON b.id = c.bill_id
+    JOIN shops s ON s.id = b.shop_id
+    ORDER BY m.id DESC LIMIT 500`);
+  res.json({ matches: rows });
+}));
 
 router.get('/bills', async (req, res, next) => {
   try {

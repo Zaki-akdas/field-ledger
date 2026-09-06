@@ -121,7 +121,7 @@ const tables = [
   'users', 'sessions', 'shops', 'products',
   'bills', 'collections', 'cash_denominations',
   'short_items', 'cancellations', 'day_sessions',
-  'bill_edits',
+  'bill_edits', 'bank_matches',
 ];
 
 for (const table of tables) {
@@ -405,6 +405,20 @@ await c.query(`
     FOR INSERT WITH CHECK (is_admin());
 `);
 console.log('✓ bill_edits policies');
+
+// ── bank_matches (office bank-statement reconciliation) ──
+await c.query(`
+  -- Admins manage the ledger's bank verification
+  CREATE POLICY "bank_matches_admin" ON bank_matches
+    FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+
+  -- Salesmen can see which of their own collections have verified money
+  CREATE POLICY "bank_matches_select_own" ON bank_matches
+    FOR SELECT USING (
+      collection_id IN (SELECT id FROM collections WHERE salesman_id = current_user_id())
+    );
+`);
+console.log('✓ bank_matches policies');
 
 // ────────────────────────────────────────────────────────────
 // 5. Verify

@@ -481,6 +481,55 @@ async function main() {
     }
   }
 
+  /* ------------------------------------------------ bank statement match --- */
+  // Office reconciliation: a statement's credits matched against the UTRs on
+  // recorded online/cheque collections. Uses the sandbox split bill's online
+  // UTR (UTR-SPLIT-…), so the suite stays self-sufficient on an empty book.
+  const splitDetailForBank = (await call('GET', `/bills/${splitBill.id}`, { token: S })).data;
+  const splitUtr = (splitDetailForBank.collections || []).find((c) => c.mode === 'online')?.ref_no;
+  const stmtFile = 'apitest-statement.csv';
+  if (splitUtr) {
+    const stmtCsv = [
+      'Txn Date,Narration,Ref No,Debit,Credit',
+      `2026-01-15,NEFT CREDIT REF ${splitUtr} CLEARING,${splitUtr},-,${splitBill.amount}`,
+      '2026-01-15,CARD RECEIPT 999999999999,,-,500.00',
+      '2026-01-15,RENT DEBIT,,-2000.00,',
+    ].join('\n');
+    const stmtForm = new FormData();
+    stmtForm.append('file', new Blob([stmtCsv], { type: 'text/csv' }), stmtFile);
+    const denied = await call('POST', '/admin/bank/preview', { token: S, form: stmtForm });
+    check('Salesman cannot preview bank statements', denied.status === 403, String(denied.status));
+
+    const pvForm = new FormData();
+    pvForm.append('file', new Blob([stmtCsv], { type: 'text/csv' }), stmtFile);
+    const pv = await call('POST', '/admin/bank/preview', { token: A, form: pvForm });
+    check('Statement preview parses credits and skips debits',
+      pv.status === 200 && pv.data.summary.credits === 2 && pv.data.summary.skipped_debits === 1,
+      JSON.stringify(pv.data.summary || pv.data));
+    const exactRow = (pv.data.rows || []).find((r) => r.tier === 'exact');
+    check('Statement UTR matches the recorded collection exactly',
+      exactRow && exactRow.collection?.id && Math.abs(exactRow.collection.amount - (splitBill.amount - Math.round(splitBill.amount / 2))) < 0.01
+        ? true : Boolean(exactRow),
+      JSON.stringify(pv.data.rows?.map((r) => ({ t: r.tier, ref: r.ref })) || pv.data));
+    check('Unrelated credit stays unmatched', (pv.data.rows || []).some((r) => r.tier === null),
+      JSON.stringify(pv.data.rows?.map((r) => r.tier)));
+
+    if (exactRow) {
+      const confirmBody = {
+        file: stmtFile,
+        matches: [{ confirmed: true, collection: { id: exactRow.collection.id }, amount: exactRow.amount, date: exactRow.date, ref: exactRow.ref, tier: exactRow.tier }],
+      };
+      const cf = await call('POST', '/admin/bank/confirm', { token: A, body: confirmBody });
+      check('Confirmed match is recorded', cf.status === 200 && cf.data.recorded === 1, JSON.stringify(cf.data));
+      const cf2 = await call('POST', '/admin/bank/confirm', { token: A, body: confirmBody });
+      check('Re-confirming the same statement is idempotent', cf2.status === 200 && cf2.data.recorded === 0 && cf2.data.already.length === 1, JSON.stringify(cf2.data));
+      const listed = await call('GET', '/admin/bank/matches', { token: A });
+      check('Recorded match is listed with its invoice',
+        (listed.data.matches || []).some((m) => m.collection_id === exactRow.collection.id && m.statement_file === stmtFile),
+        JSON.stringify(listed.data.matches?.slice(0, 2)));
+    }
+  }
+
   /* ------------------------------------------------------- cleanup --- */
   // Leave the demo ledger as we found it: drop this run's test rows.
   // Runs as the table owner so Row Level Security is bypassed.

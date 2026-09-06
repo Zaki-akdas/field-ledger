@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
+import { useToast } from '../../lib/context.jsx';
 import { money, dateLabel, STATUS_LABEL } from '../../lib/format.js';
 import {
   Chips, ErrorNote, Input, Loading, Money, Pill, ResponsiveTable, col,
 } from '../../components/ui.jsx';
+import BillEditSheet from '../../components/BillEditSheet.jsx';
 
 const TONE = { delivered: 'settled', partial: 'attention', pending: 'neutral', cancelled: 'attention' };
 
@@ -13,8 +15,16 @@ export default function Bills() {
   const { from, to, salesmanId, setSalesman } = useRange();
   const [status, setStatus] = useState('all');
   const [q, setQ] = useState('');
-  const { data, loading, error } = useApi(`/admin/bills?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
+  const [editing, setEditing] = useState(null);
+  const { push } = useToast();
+  const { data, loading, error, reload } = useApi(`/admin/bills?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
   const people = useApi('/salesmen');
+
+  const onEdited = (bill, changed) => {
+    setEditing(null);
+    push(changed.length ? `Saved — ${changed.map((c) => c.label).join(', ')} updated, change recorded.` : 'No changes to save.', 'success');
+    reload();
+  };
 
   const bills = useMemo(() => {
     let rows = data?.bills || [];
@@ -80,9 +90,20 @@ export default function Bills() {
             col('Date', (b) => dateLabel(b.bill_date)),
           ]}
           rows={bills}
+          rowProps={(b) => ({
+            onClick: () => setEditing(b),
+            onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(b); } },
+            tabIndex: 0,
+            role: 'button',
+            'aria-label': `Edit ${b.invoice_no}`,
+            className: 'cursor-pointer',
+          })}
+          cardProps={(b) => ({ onClick: () => setEditing(b), role: 'button', tabIndex: 0, 'aria-label': `Edit ${b.invoice_no}`, className: 'cursor-pointer anim-press' })}
           empty={<p className="py-10 text-center text-ink-faint">No bills match these filters.</p>}
         />
       )}
+
+      <BillEditSheet bill={editing} onClose={() => setEditing(null)} onSaved={onEdited} />
     </div>
   );
 }

@@ -1,12 +1,15 @@
+import { useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { adminBackLabel, adminOriginOf } from '../../lib/adminBack.js';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
+import { useToast } from '../../lib/context.jsx';
 import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js';
 import {
   Card, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
 } from '../../components/ui.jsx';
 import AttachmentPhoto from '../../components/AttachmentPhoto.jsx';
+import BillEditSheet from '../../components/BillEditSheet.jsx';
 
 const TONE = { delivered: 'settled', partial: 'attention', pending: 'neutral', cancelled: 'attention' };
 
@@ -18,6 +21,8 @@ export default function SalesmanDetail() {
   const to = params.get('to') || rangeTo;
   useTitle('Salesman');
   const navigate = useNavigate();
+  const [editing, setEditing] = useState(null);
+  const { push } = useToast();
   const location = useLocation();
   const backTo = adminOriginOf(location);
   const goBack = () => {
@@ -29,7 +34,13 @@ export default function SalesmanDetail() {
     const search = q.toString();
     navigate(`${backTo || '/admin/salesmen'}${search ? `?${search}` : ''}`, { replace: true });
   };
-  const { data, loading, error } = useApi(`/admin/salesmen/${id}?from=${from}&to=${to}`);
+  const { data, loading, error, reload } = useApi(`/admin/salesmen/${id}?from=${from}&to=${to}`);
+
+  const onEdited = (bill, changed) => {
+    setEditing(null);
+    push(changed.length ? `Saved — ${changed.map((c) => c.label).join(', ')} updated, change recorded.` : 'No changes to save.', 'success');
+    reload();
+  };
 
   if (loading) return <Loading label="Opening salesman…" />;
   if (error) return <ErrorNote>{error.message}</ErrorNote>;
@@ -79,6 +90,15 @@ export default function SalesmanDetail() {
             col('Date', (b) => dateLabel(b.bill_date)),
           ]}
           rows={data.bills}
+          rowProps={(b) => ({
+            onClick: () => setEditing(b),
+            onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditing(b); } },
+            tabIndex: 0,
+            role: 'button',
+            'aria-label': `Edit ${b.invoice_no}`,
+            className: 'cursor-pointer',
+          })}
+          cardProps={(b) => ({ onClick: () => setEditing(b), role: 'button', tabIndex: 0, 'aria-label': `Edit ${b.invoice_no}`, className: 'cursor-pointer anim-press' })}
         />
       </div>
 
@@ -160,6 +180,8 @@ export default function SalesmanDetail() {
           </Card>
         </div>
       )}
+
+      <BillEditSheet bill={editing} onClose={() => setEditing(null)} onSaved={onEdited} />
     </div>
   );
 }

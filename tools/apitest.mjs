@@ -326,6 +326,83 @@ async function main() {
     }
   }
 
+  /* ----------------------------------------------------- bill edits --- */
+  // Office corrections: invoice/amount/date/salesman plus the shop card, all
+  // audited field-by-field in bill_edits. Money is guarded — no edit below
+  // collected, no duplicates, nothing on cancelled bills — and salesmen are
+  // locked out entirely.
+  const team = (await call('GET', '/salesmen', { token: A })).data.salesmen;
+  const editTarget = (await call('GET', `/bills?q=${encodeURIComponent(`${pdfInvoice}-9003`)}`, { token: S })).data.bills[0];
+  const partialBill = (await call('GET', `/bills?q=${encodeURIComponent(`${pdfInvoice}-9002`)}`, { token: S })).data.bills[0];
+
+  if (editTarget) {
+    const denied = await call('PATCH', `/bills/${editTarget.id}`, { token: S, body: { bill: { amount: 1 } } });
+    check('Salesman cannot edit a bill', denied.status === 403, `got ${denied.status}`);
+
+    const renamed = await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: { bill: { invoice_no: `INV/EDIT/${Date.now()}` } } });
+    check('Admin renames an invoice', renamed.status === 200 && /^INV\/EDIT\//.test(renamed.data.bill.invoice_no), renamed.data?.error || '');
+
+    const dup = await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: { bill: { invoice_no: testInvoice } } });
+    check('Renaming onto an existing invoice is refused', dup.status === 409 && /already in the book/i.test(dup.data.error), dup.data?.error || '');
+
+    const dated = await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: { bill: { bill_date: '2026-09-01' } } });
+    check('Admin moves a bill to another day', dated.status === 200 && dated.data.bill.bill_date === '2026-09-01', dated.data?.error || '');
+
+    const other = team.find((t) => t.id !== editTarget.salesman_id);
+    if (other) {
+      const moved = await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: { bill: { salesman_id: other.id } } });
+      check('Admin reassigns a bill to another route', moved.status === 200 && moved.data.bill.salesman_id === other.id, moved.data?.error || '');
+      const back = await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: { bill: { salesman_id: editTarget.salesman_id } } });
+      check('Bill moved back to its route', back.status === 200 && back.data.bill.salesman_id === editTarget.salesman_id, back.data?.error || '');
+    }
+
+    // Shop-card edits run against the CSV fixture's "Test Shop" — a test-only
+    // artifact. Real book shops are shared by name+area across routes, so the
+    // suite must never rename one of those.
+    const renamedShop = await call('PATCH', `/bills/${bill.id}`, { token: A, body: { shop: { name: 'Test Shop Edited' } } });
+    check('Admin renames the shop on a bill', renamedShop.status === 200 && renamedShop.data.bill.shop_name === 'Test Shop Edited', renamedShop.data?.error || '');
+    // Renaming onto another shop's identity must be refused rather than
+    // silently merging the two shops.
+    const nameBack = await call('PATCH', `/bills/${bill.id}`, { token: A, body: { shop: { name: 'Party One General Store' } } });
+    check('Renaming onto another shop\'s identity is refused', nameBack.status === 409 && /already named/.test(nameBack.data.error || ''), nameBack.data?.error || '');
+    const nameRestored = await call('PATCH', `/bills/${bill.id}`, { token: A, body: { shop: { name: 'Test Shop' } } });
+    check('Shop renamed back keeps its history', nameRestored.status === 200 && nameRestored.data.bill.shop_name === 'Test Shop', nameRestored.data?.error || '');
+
+    const carded = await call('PATCH', `/bills/${bill.id}`, { token: A, body: { shop: { owner_name: 'Wasim Khan', phone: '9876500001' } } });
+    check('Admin updates the shop contact card', carded.status === 200 && carded.data.bill.shop_owner === 'Wasim Khan', carded.data?.error || '');
+
+    const noop = await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: {} });
+    check('Empty edit changes nothing', noop.status === 200 && noop.data.changed.length === 0, JSON.stringify(noop.data?.changed));
+
+    const detail = (await call('GET', `/bills/${editTarget.id}`, { token: A })).data;
+    const invEdit = (detail.edits || []).find((e) => e.field === 'invoice_no');
+    check('Every change lands in the audit trail', (detail.edits || []).length === 4, `${(detail.edits || []).length} audit rows`);
+    check('Audit rows carry before and after values',
+      invEdit && /9003$/.test(invEdit.old_value || '') && /^INV\/EDIT\//.test(invEdit.new_value || ''),
+      JSON.stringify(invEdit));
+    const ownView = (await call('GET', `/bills/${editTarget.id}`, { token: S })).data;
+    check('The route salesman sees the edit history too', (ownView.edits || []).length === 4, `${(ownView.edits || []).length} rows`);
+
+    // Restore identity fields so the run's cleanup still matches this bill.
+    await call('PATCH', `/bills/${editTarget.id}`, { token: A, body: { bill: { invoice_no: editTarget.invoice_no, bill_date: editTarget.bill_date } } });
+  }
+
+  if (partialBill) {
+    const raised = await call('PATCH', `/bills/${partialBill.id}`, { token: A, body: { bill: { amount: partialBill.amount + 100 } } });
+    check('Admin raises a bill amount', raised.status === 200 && raised.data.bill.amount === partialBill.amount + 100, raised.data?.error || '');
+  }
+
+  if (splitBill) {
+    const below = await call('PATCH', `/bills/${splitBill.id}`, { token: A, body: { bill: { amount: 100 } } });
+    check('Amount cannot drop below what is collected', below.status === 422 && /already collected/.test(below.data.error), below.data?.error || '');
+    const cancelled = await call('POST', '/cancellations', { token: A, body: { bill_id: splitBill.id, reason: 'Test: edit guard' } });
+    if (cancelled.status === 201) {
+      const onCancelled = await call('PATCH', `/bills/${splitBill.id}`, { token: A, body: { bill: { amount: 900 } } });
+      check('Cancelled bills cannot be edited', onCancelled.status === 409, String(onCancelled.status));
+      await call('DELETE', `/cancellations/${splitBill.id}`, { token: A });
+    }
+  }
+
   /* ------------------------------------------------------- exports --- */
   for (const report of ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection']) {
     const x = await call('GET', `/export/${report}?format=xlsx&${RANGE}`, { token: A });

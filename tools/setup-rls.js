@@ -121,6 +121,7 @@ const tables = [
   'users', 'sessions', 'shops', 'products',
   'bills', 'collections', 'cash_denominations',
   'short_items', 'cancellations', 'day_sessions',
+  'bill_edits',
 ];
 
 for (const table of tables) {
@@ -386,6 +387,24 @@ await c.query(`
     FOR UPDATE USING (salesman_id = current_user_id());
 `);
 console.log('✓ day_sessions policies');
+
+// ── bill_edits (audit trail for office corrections to bills) ──
+await c.query(`
+  -- Admins see every edit
+  CREATE POLICY "bill_edits_select_admin" ON bill_edits
+    FOR SELECT USING (is_admin());
+
+  -- Salesmen see the history of their own route's bills
+  CREATE POLICY "bill_edits_select_own" ON bill_edits
+    FOR SELECT USING (
+      bill_id IN (SELECT id FROM bills WHERE salesman_id = current_user_id())
+    );
+
+  -- Only admins ever write audit rows (edits come from the office).
+  CREATE POLICY "bill_edits_insert_admin" ON bill_edits
+    FOR INSERT WITH CHECK (is_admin());
+`);
+console.log('✓ bill_edits policies');
 
 // ────────────────────────────────────────────────────────────
 // 5. Verify

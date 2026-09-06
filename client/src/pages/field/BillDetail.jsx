@@ -65,6 +65,28 @@ export default function BillDetail() {
         </div>
       </Card>
 
+      {(data.edits?.length || 0) > 0 && (
+        <div className="mt-6">
+          <SectionTitle hint={`${data.edits.length} ${data.edits.length === 1 ? 'change' : 'changes'}`}>Change history</SectionTitle>
+          <div className="overflow-hidden rounded-xl border border-line bg-surface divide-y divide-line">
+            {data.edits.map((e) => (
+              <div key={e.id} className="px-3.5 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13.5px] font-medium">{e.field.replace(/_/g, ' ')}</p>
+                    <p className="num mt-0.5 truncate text-[12.5px] text-ink-soft">
+                      {e.old_value || '—'} <span className="text-ink-faint">→</span> {e.new_value || '—'}
+                    </p>
+                    <p className="mt-0.5 text-[11.5px] text-ink-faint">by {e.edited_by_name}</p>
+                  </div>
+                  <p className="shrink-0 text-[11.5px] text-ink-faint">{dateLabel(String(e.created_at).slice(0, 10))}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {bill.cancelled_at && (
         <div className="mt-4 rounded-xl border border-attention/30 bg-attention-tint p-4">
           <p className="text-[13px] font-semibold uppercase tracking-wider text-attention-deep">Cancelled</p>

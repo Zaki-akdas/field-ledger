@@ -199,7 +199,7 @@ export async function billRows({ from, to, salesmanId } = {}) {
   const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
   const sql = `
     SELECT b.*,
-      s.name AS shop_name, s.area AS shop_area, s.owner_name AS shop_owner,
+      s.name AS shop_name, s.area AS shop_area, s.owner_name AS shop_owner, s.phone AS shop_phone,
       u.name AS salesman_name, u.code AS salesman_code,
       COALESCE((SELECT SUM(amount::numeric) FROM cancellations c WHERE c.bill_id = b.id), 0)::float8 AS cancelled_amount,
       COALESCE((SELECT SUM(amount::numeric) FROM short_items si WHERE si.bill_id = b.id), 0)::float8 AS short_amount,

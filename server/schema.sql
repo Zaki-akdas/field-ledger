@@ -99,6 +99,19 @@ CREATE TABLE IF NOT EXISTS cancellations (
   created_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text
 );
 
+CREATE TABLE IF NOT EXISTS bill_edits (
+  id SERIAL PRIMARY KEY,
+  bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+  shop_id INTEGER REFERENCES shops(id),
+  edited_by INTEGER NOT NULL REFERENCES users(id),
+  field TEXT NOT NULL,
+  old_value TEXT,
+  new_value TEXT,
+  created_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text
+);
+
+CREATE INDEX IF NOT EXISTS idx_bill_edits_bill ON bill_edits(bill_id);
+
 CREATE TABLE IF NOT EXISTS day_sessions (
   id SERIAL PRIMARY KEY,
   salesman_id INTEGER NOT NULL REFERENCES users(id),
@@ -115,6 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_bills_salesman ON bills(salesman_id);
 CREATE INDEX IF NOT EXISTS idx_col_bill ON collections(bill_id);
 CREATE INDEX IF NOT EXISTS idx_col_date ON collections(collection_date);
 CREATE INDEX IF NOT EXISTS idx_col_salesman ON collections(salesman_id);
+CREATE INDEX IF NOT EXISTS idx_bill_edits_bill ON bill_edits(bill_id);
 
 -- ── Pre-auth lookups (SECURITY DEFINER) ────────────────────────────────────
 -- Login and token→user resolution run before a JWT actor exists, so RLS

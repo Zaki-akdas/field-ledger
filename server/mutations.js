@@ -95,6 +95,115 @@ export async function createBill({ payload = {}, user }) {
   return { bill: await billRow(r.rows[0].id) };
 }
 
+/* ------------------------------------------------------------- bill edit --- */
+
+// Office corrections to a bill: invoice number, amount, date, salesman, and
+// the shop card (name/area/owner/phone). Every changed field lands in the
+// bill_edits audit trail with before→after values. Money is guarded so the
+// ledger can never be corrupted by an edit: no edits to cancelled bills, an
+// amount can never drop below what has already been collected, and invoice
+// numbers stay unique (races surface as the friendly duplicate message).
+const EDITABLE_SHOP = ['name', 'area', 'owner_name', 'phone'];
+const FIELD_LABEL = {
+  invoice_no: 'Invoice no.', amount: 'Amount', bill_date: 'Bill date',
+  salesman_id: 'Salesman', name: 'Shop name', area: 'Area',
+  owner_name: 'Owner', phone: 'Phone',
+};
+
+export async function editBill({ billId, payload = {}, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can edit bills.');
+  const bill = await billRow(Number(billId));
+  if (!bill) throw new HttpError(404, 'Bill not found.');
+  if (bill.cancelled_at) throw new HttpError(409, 'This bill is cancelled — un-cancel it before editing.');
+
+  const updates = [];
+  if (payload.bill && typeof payload.bill === 'object') {
+    const b = payload.bill;
+    if (b.invoice_no !== undefined) {
+      const inv = String(b.invoice_no || '').trim();
+      if (!inv) throw new HttpError(400, 'Invoice number cannot be empty.');
+      if (inv !== bill.invoice_no) updates.push({ field: 'invoice_no', value: inv });
+    }
+    if (b.amount !== undefined) {
+      const amt = round2(Number(b.amount));
+      if (!Number.isFinite(amt) || amt <= 0) throw new HttpError(400, 'Enter a bill amount greater than zero.');
+      if (amt < bill.collected_amount) {
+        throw new HttpError(422, `₹${bill.collected_amount.toLocaleString('en-IN')} is already collected against this bill — the new amount cannot be less.`);
+      }
+      if (amt !== bill.amount) updates.push({ field: 'amount', value: amt });
+    }
+    if (b.bill_date !== undefined) {
+      const d = String(b.bill_date || '').trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) throw new HttpError(400, 'Enter the bill date as YYYY-MM-DD.');
+      if (d !== bill.bill_date) updates.push({ field: 'bill_date', value: d });
+    }
+    if (b.salesman_id !== undefined && Number(b.salesman_id) !== bill.salesman_id) {
+      const sid = Number(b.salesman_id);
+      const s = await q1("SELECT id, name FROM users WHERE id = $1 AND role = 'salesman' AND active = 1", [sid]);
+      if (!s) throw new HttpError(400, 'Pick a valid salesman for this route.');
+      updates.push({ field: 'salesman_id', value: sid });
+    }
+  }
+
+  const shopUpdates = [];
+  let shopCur = null;
+  if (payload.shop && typeof payload.shop === 'object') {
+    const s = payload.shop;
+    shopCur = await q1('SELECT * FROM shops WHERE id = $1', [bill.shop_id]);
+    if (!shopCur) throw new HttpError(404, 'The bill\'s shop no longer exists.');
+    for (const f of EDITABLE_SHOP) {
+      if (s[f] === undefined) continue;
+      const v = String(s[f] ?? '').trim();
+      if (v === (shopCur[f] || '')) continue;
+      if (f === 'name' && !v) throw new HttpError(400, 'Shop name cannot be empty.');
+      shopUpdates.push({ field: f, value: v || null });
+    }
+    // Renaming into another shop's identity would silently merge two shops.
+    if (shopUpdates.some((u) => u.field === 'name' || u.field === 'area')) {
+      const name = shopUpdates.find((u) => u.field === 'name')?.value ?? shopCur.name;
+      const area = shopUpdates.find((u) => u.field === 'area')?.value ?? shopCur.area;
+      const clash = await q1(
+        "SELECT id FROM shops WHERE name = $1 AND COALESCE(area, '') = COALESCE($2, '') AND id <> $3",
+        [name, area ?? '', shopCur.id],
+      );
+      if (clash) throw new HttpError(409, `Another shop is already named ${name}${area ? ` in ${area}` : ''}.`);
+    }
+  }
+
+  if (updates.length === 0 && shopUpdates.length === 0) {
+    return { bill: await billRow(bill.id), changed: [] };
+  }
+
+  const edits = [];
+  await tx(async (client) => {
+    for (const u of updates) {
+      const before = u.field === 'salesman_id' ? bill.salesman_name : bill[u.field];
+      await client.query(
+        `UPDATE bills SET ${u.field} = $1 WHERE id = $2`,
+        [u.field === 'salesman_id' ? u.value : String(u.value), bill.id],
+      );
+      edits.push({ field: u.field, old_value: before == null ? null : String(before), new_value: String(u.value) });
+    }
+    for (const u of shopUpdates) {
+      await client.query(`UPDATE shops SET ${u.field} = $1 WHERE id = $2`, [u.value, bill.shop_id]);
+      edits.push({ field: u.field, old_value: shopCur ? String(shopCur[u.field] ?? '') : null, new_value: u.value == null ? null : String(u.value) });
+    }
+    for (const e of edits) {
+      await client.query(
+        'INSERT INTO bill_edits (bill_id, shop_id, edited_by, field, old_value, new_value) VALUES ($1, $2, $3, $4, $5, $6)',
+        [bill.id, bill.shop_id, user.id, e.field, e.old_value, e.new_value],
+      );
+    }
+  }).catch((err) => {
+    if (err?.code === '23505') {
+      throw new HttpError(409, `Invoice ${String(updates.find((u) => u.field === 'invoice_no')?.value ?? bill.invoice_no)} is already in the book — use a different invoice number.`);
+    }
+    throw err;
+  });
+
+  return { bill: await billRow(bill.id), changed: edits.map((e) => ({ ...e, label: FIELD_LABEL[e.field] || e.field })) };
+}
+
 /* ------------------------------------------------------------ collection --- */
 
 export async function recordCollection({ payload = {}, user }) {

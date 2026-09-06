@@ -8,7 +8,7 @@ import { upload, photoUpload } from '../uploads.js';
 import { saveFile, signedUploadUrl } from '../storage.js';
 import { parseBillWorkbook } from '../import.js';
 import { parseCoshipPdf } from '../pdfImport.js';
-import { createBill, recordCollection, cancelBill, uncancelBill, addShortItems, HttpError } from '../mutations.js';
+import { createBill, recordCollection, cancelBill, uncancelBill, addShortItems, editBill, HttpError } from '../mutations.js';
 
 export const router = Router();
 router.use(requireAuth);
@@ -47,7 +47,19 @@ router.get('/bills/:id', handle(async (req, res) => {
   }
   const shortItems = await q('SELECT * FROM short_items WHERE bill_id = $1 ORDER BY id', [bill.id]);
   const cancellation = (await q('SELECT * FROM cancellations WHERE bill_id = $1', [bill.id]))[0] || null;
-  res.json({ bill, collections: collectionsList, short_items: shortItems, cancellation });
+  const edits = await q(`
+    SELECT e.id, e.field, e.old_value, e.new_value, e.created_at, u.name AS edited_by_name
+    FROM bill_edits e JOIN users u ON u.id = e.edited_by
+    WHERE e.bill_id = $1 ORDER BY e.id DESC`, [bill.id]);
+  res.json({ bill, collections: collectionsList, short_items: shortItems, cancellation, edits });
+}));
+
+// Office corrections to a bill or its shop card. Admin-only (enforced in
+// the mutation); every changed field is recorded in the bill_edits audit
+// trail, and the bills UPDATE trigger pushes the change to every open screen.
+router.patch('/bills/:id', handle(async (req, res) => {
+  const out = await editBill({ billId: Number(req.params.id), payload: req.body, user: req.user });
+  res.json(out);
 }));
 
 router.post('/bills', handle(async (req, res) => {

@@ -325,28 +325,40 @@ export const col = (label, cell, align, spawn, header) => ({ label, cell, align,
 
 export function ResponsiveTable({ cols, rows, footer, empty, className = '', rowProps, cardProps, tableWrapProps }) {
   const isSpawn = (c) => SPAWN_POS.includes(c.spawn);
-  const primary = cols.find(isSpawn);
+  // Only 'top' columns may be the card's primary line — a 'grid' col (e.g. the
+  // row checkbox) must never hijack it, or the real primary never renders.
+  const primary = cols.find((c) => c.spawn === 'top');
   const mids = cols.filter((c) => c.spawn === 'mid');
   const stats = cols.filter((c) => c.spawn === 'grid');
   const rest = cols.filter((c) => !isSpawn(c));
   const keyOf = (r, i) => (r && (r.id ?? r.key)) ?? i;
   const stackCls = cx('stagger space-y-2.5 md:hidden', className);
 
-  const CardRow = ({ r, i }) => (
+  const CardRow = ({ r, i }) => {
+    // Grid stats with no label (row checkboxes) sit inline beside the primary
+    // line instead of floating as an unlabelled square in the stats grid.
+    const bareStats = stats.filter((c) => !c.label);
+    const labelledStats = stats.filter((c) => c.label);
+    return (
     <div
       className="rounded-xl border border-line bg-surface p-3.5 shadow-panel"
       {...(cardProps ? cardProps(r, i) : {})}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          {primary && <div className="min-w-0">{primary.cell(r, i)}</div>}
-          {mids.map((c) => (
-            <div key={c.label} className="mt-1 min-w-0 text-[12px] text-ink-soft">{c.cell(r, i)}</div>
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
+          {bareStats.map((c, bi) => (
+            <div key={`bare-${bi}`} className="shrink-0 pt-0.5">{c.cell(r, i)}</div>
           ))}
+          <div className="min-w-0 flex-1">
+            {primary && <div className="min-w-0">{primary.cell(r, i)}</div>}
+            {mids.map((c) => (
+              <div key={c.label} className="mt-1 min-w-0 text-[12px] text-ink-soft">{c.cell(r, i)}</div>
+            ))}
+          </div>
         </div>
-        {stats.length > 0 && (
+        {labelledStats.length > 0 && (
           <div className="grid shrink-0 grid-cols-2 gap-x-5 gap-y-1">
-            {stats.map((c) => (
+            {labelledStats.map((c) => (
               <div key={c.label}>
                 <p className="text-[10.5px] uppercase tracking-wider text-ink-faint">{c.label}</p>
                 <div className="num text-right text-[13px]">{c.cell(r, i)}</div>
@@ -371,7 +383,8 @@ export function ResponsiveTable({ cols, rows, footer, empty, className = '', row
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <>

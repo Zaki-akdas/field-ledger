@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { money, money2 } from '../lib/format.js';
 
 export { money, money2 };
@@ -259,21 +260,30 @@ export function Sheet({ open, onClose, title, children, footer }) {
   useEscape(onClose, open);
   useBodyScrollLock(open);
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
-      <button type="button" aria-label="Close" className="absolute inset-0 bg-ink/40" onClick={onClose} />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="relative max-h-[88vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-surface p-5 pb-5 safe-bottom shadow-raise sm:max-w-md sm:rounded-2xl"
-      >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line-strong sm:hidden" />
-        {title && <h3 className="text-[17px] font-semibold mb-3">{title}</h3>}
-        {children}
-        {footer && <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row">{footer}</div>}
+  return createPortal(
+    <>
+      {/* Backdrop — separate fixed layer. */}
+      <div className="fixed inset-0 z-50 bg-ink/40" onClick={onClose} />
+      {/* Dialog — anchored bottom on mobile, centred on sm+. */}
+      <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center p-0 sm:inset-0 sm:items-center sm:p-4">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={title}
+          className="flex max-h-[88vh] w-full max-w-md flex-col rounded-t-2xl border border-line bg-surface shadow-raise sm:rounded-2xl"
+        >
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-0">
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line-strong sm:hidden" />
+              {title && <h3 className="mb-3 text-[17px] font-semibold">{title}</h3>}
+              {children}
+            </div>
+          </div>
+          {footer && <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-line p-5 safe-bottom sm:flex-row">{footer}</div>}
+        </div>
       </div>
-    </div>
+    </>,
+    document.body,
   );
 }
 

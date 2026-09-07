@@ -1,12 +1,12 @@
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { createContext, useContext, useCallback, useMemo, useState } from 'react';
 import { useAuth } from '../lib/context.jsx';
-import { downloadExport } from '../lib/api.js';
+import { downloadExport, api } from '../lib/api.js';
 import { shiftISO, todayISO } from '../lib/format.js';
 import { useToast } from '../lib/context.jsx';
 import { useDarkMode } from '../lib/hooks.js';
 import { useRealtime } from '../lib/realtime.js';
-import { Btn, cx, Select, Spinner } from './ui.jsx';
+import { Btn, cx, Input, Select, Sheet, Spinner } from './ui.jsx';
 
 const RangeContext = createContext(null);
 export const useRange = () => useContext(RangeContext);
@@ -41,6 +41,9 @@ export default function AdminLayout() {
   const { push } = useToast();
   const { dark, toggle: toggleDark } = useDarkMode();
   const [exporting, setExporting] = useState(null);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetWord, setResetWord] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
 
   // Live updates — subscribe so pages can react to data changes (badge counts etc.)
   useRealtime();
@@ -154,6 +157,9 @@ export default function AdminLayout() {
             <button type="button" onClick={logout} className="mt-2 text-[12.5px] text-ink-faint underline hover:text-ink">
               Sign out
             </button>
+            <button type="button" onClick={() => { setResetWord(''); setResetOpen(true); }} className="mt-3 block w-full text-left text-[11.5px] text-attention/70 hover:text-attention transition-colors">
+              Factory reset
+            </button>
           </div>
         </aside>
 
@@ -221,6 +227,30 @@ export default function AdminLayout() {
           </main>
         </div>
       </div>
+      {/* Factory reset confirmation */}
+      <Sheet open={resetOpen} onClose={() => setResetOpen(false)} title="Factory reset" footer={
+        <>
+          <Btn variant="secondary" block onClick={() => setResetOpen(false)} disabled={resetBusy}>Cancel</Btn>
+          <Btn variant="danger" block disabled={resetWord !== 'DELETE' || resetBusy} onClick={async () => {
+            setResetBusy(true);
+            try {
+              await api.post('/admin/factory-reset', { confirm: 'DELETE' });
+              push('All data wiped. Book is empty.', 'success');
+              setResetOpen(false);
+              window.location.reload();
+            } catch (err) {
+              push(err.message, 'error');
+            } finally {
+              setResetBusy(false);
+            }
+          }}>{resetBusy ? 'Resetting…' : 'Wipe everything'}</Btn>
+        </>
+      }>
+        <p className="text-[13.5px] text-ink-soft mb-3">This permanently deletes <strong>all bills, collections, shops, products, and salesman accounts</strong>. Only admin logins survive.</p>
+        <p className="text-[13.5px] text-ink-soft mb-3">Type <strong className="text-attention">DELETE</strong> below to confirm.</p>
+        <Input value={resetWord} onChange={(e) => setResetWord(e.target.value)} placeholder="Type DELETE" mono className="border-attention focus:border-attention" />
+      </Sheet>
+
     </RangeContext.Provider>
   );
 }

@@ -319,3 +319,38 @@ router.post('/shops/delete', async (req, res, next) => {
     res.json(await deleteShops({ ids: req.body.ids, user: req.user }));
   } catch (err) { next(err); }
 });
+
+/** Factory reset — wipe every ledger table but keep admin accounts. */
+router.post('/factory-reset', async (req, res, next) => {
+  try {
+    // Require the magic word to prevent accidental clicks
+    const { confirm } = req.body || {};
+    if (confirm !== 'DELETE') {
+      return res.status(400).json({ error: 'Type DELETE to confirm factory reset.' });
+    }
+
+    // Truncate in FK-safe order; keep users table intact (admins survive)
+    const tables = [
+      'cash_denominations',
+      'bank_matches',
+      'bill_edits',
+      'short_items',
+      'cancellations',
+      'collections',
+      'bills',
+      'shops',
+      'products',
+      'day_sessions',
+      'sessions',
+    ];
+    for (const t of tables) {
+      await q(`TRUNCATE TABLE ${t} RESTART IDENTITY CASCADE`);
+    }
+    // Delete salesman accounts (keep admins)
+    await q(`DELETE FROM users WHERE role = 'salesman'`);
+    // Reset sequences so IDs start from 1 again
+    await q(`ALTER SEQUENCE users_id_seq RESTART WITH 1`);
+
+    res.json({ ok: true, message: 'All data wiped. Admin accounts preserved.' });
+  } catch (err) { next(err); }
+});

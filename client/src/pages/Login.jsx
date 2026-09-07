@@ -5,27 +5,36 @@ import { useDarkMode } from '../lib/hooks.js';
 import { Btn, ErrorNote, Field, Input } from '../components/ui.jsx';
 
 export default function Login() {
-  const { login, user } = useAuth();
+  const { login, register, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { dark, toggle: toggleDark } = useDarkMode();
+  const [mode, setMode] = useState('signin');
   const [code, setCode] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
   if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/field/start'} replace />;
 
+  const land = (u) => {
+    const intended = location.state?.from;
+    const home = u.role === 'admin' ? '/admin' : '/field/start';
+    const allowed = intended && (u.role === 'admin' ? intended.startsWith('/admin') : intended.startsWith('/field'));
+    navigate(allowed ? intended : home, { replace: true });
+  };
+
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const u = await login(code.trim(), password);
-      const intended = location.state?.from;
-      const home = u.role === 'admin' ? '/admin' : '/field/start';
-      const allowed = intended && (u.role === 'admin' ? intended.startsWith('/admin') : intended.startsWith('/field'));
-      navigate(allowed ? intended : home, { replace: true });
+      if (mode === 'signin') {
+        land(await login(code.trim(), password));
+      } else {
+        land(await register({ code: code.trim(), name: name.trim(), password }));
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -63,7 +72,9 @@ Variance = Expected − Actual`}
           <div className="flex items-center justify-between mb-6">
             <div className="lg:hidden">
               <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-ink-faint">Field Ledger</p>
-              <h1 className="mt-1 text-[24px] font-semibold tracking-tight sm:text-[26px]">Sign in</h1>
+              <h1 className="mt-1 text-[24px] font-semibold tracking-tight sm:text-[26px]">
+                {mode === 'signin' ? 'Sign in' : 'Create your login'}
+              </h1>
             </div>
             <button
               type="button"
@@ -78,11 +89,17 @@ Variance = Expected − Actual`}
               )}
             </button>
           </div>
-          <h1 className="hidden lg:block text-[26px] font-semibold tracking-tight mb-1">Sign in</h1>
-          <p className="text-[14px] text-ink-soft mb-6">Use the login code your office gave you.</p>
+          <h1 className="hidden lg:block text-[26px] font-semibold tracking-tight mb-1">
+            {mode === 'signin' ? 'Sign in' : 'Create your login'}
+          </h1>
+          <p className="text-[14px] text-ink-soft mb-6">
+            {mode === 'signin'
+              ? 'Use the login code your office gave you — or make your own below.'
+              : 'Pick a login code for yourself. You get your own empty route and can start billing right away.'}
+          </p>
 
           <form onSubmit={submit} className="space-y-4">
-            <Field label="Login code">
+            <Field label="Login code" hint={mode === 'signup' ? '3-20 letters, numbers or dashes — e.g. RAMESH-S' : undefined}>
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -96,13 +113,26 @@ Variance = Expected − Actual`}
                 required
               />
             </Field>
+            {mode === 'signup' && (
+              <Field label="Your name">
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  autoComplete="name"
+                  placeholder="Ramesh Yadav"
+                  maxLength={60}
+                  required
+                />
+              </Field>
+            )}
             <Field label="Password">
               <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 placeholder="••••••••"
+                minLength={mode === 'signup' ? 6 : undefined}
                 required
               />
             </Field>
@@ -110,12 +140,23 @@ Variance = Expected − Actual`}
             <ErrorNote>{error}</ErrorNote>
 
             <Btn type="submit" variant="primary" size="lg" block disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
+              {busy ? (mode === 'signin' ? 'Signing in…' : 'Creating…') : (mode === 'signin' ? 'Sign in' : 'Create login')}
             </Btn>
           </form>
 
-          <p className="mt-8 text-[12.5px] text-ink-faint">
-            Lost your login? Ask the back office to reset it.
+          <p className="mt-6 text-center text-[13px]">
+            {mode === 'signin' ? (
+              <button type="button" onClick={() => { setMode('signup'); setError(null); }} className="font-medium text-ink underline underline-offset-4">
+                New salesman? Create your own login
+              </button>
+            ) : (
+              <button type="button" onClick={() => { setMode('signin'); setError(null); }} className="font-medium text-ink underline underline-offset-4">
+                Already have a login? Sign in
+              </button>
+            )}
+          </p>
+          <p className="mt-4 text-[12.5px] text-ink-faint text-center">
+            {mode === 'signin' ? 'Lost your login? Ask the back office to reset it.' : 'Office logins are provisioned privately — signup creates field accounts only.'}
           </p>
         </div>
       </section>

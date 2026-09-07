@@ -31,6 +31,15 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
+  // Self-signup mirrors login(): the server creates the salesman account and
+  // returns a live session, which lands in the same token/user state.
+  const register = useCallback(async ({ code, name, password, phone }) => {
+    const data = await api.post('/auth/register', { code, name, password, phone });
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   const logout = useCallback(async () => {
     try { await api.post('/auth/logout', {}); } catch { /* ignore */ }
     setToken(null);
@@ -43,7 +52,7 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('field-ledger:unauthorized', onUnauthorized);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, logout, setUser }), [user, loading, login, logout]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, setUser }), [user, loading, login, register, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

@@ -43,6 +43,49 @@ router.post('/login', async (req, res) => {
   res.json({ token, user: publicUser(user) });
 });
 
+// Open salesman self-signup: a new field user picks their own login code,
+// name, and password and lands straight in the app on an empty route. Role is
+// pinned server-side — nobody self-registers as admin. The login throttle's
+// per-IP budget also covers registration so the open endpoint can't be
+// hammered into a user-farm.
+router.post('/register', async (req, res, next) => {
+  try {
+    const { code, name, password, phone } = req.body || {};
+    const cleanCode = String(code || '').trim().toUpperCase();
+    const cleanName = String(name || '').trim();
+    if (overLimit('__register__' + req.ip, req.ip)) {
+      res.set('Retry-After', '900');
+      return res.status(429).json({ error: 'Too many attempts from this network. Please try again in 15 minutes.' });
+    }
+    if (!/^[A-Z0-9-]{3,20}$/.test(cleanCode)) {
+      return res.status(400).json({ error: 'Pick a login code of 3-20 letters, numbers or dashes (e.g. RAMESH-S or SLM-07).' });
+    }
+    if (cleanName.length < 2 || cleanName.length > 60) {
+      return res.status(400).json({ error: 'Enter your full name (2-60 characters).' });
+    }
+    if (!password || String(password).length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters.' });
+    }
+    const clash = await findUserByCode(cleanCode);
+    if (clash) {
+      return res.status(409).json({ error: 'That login code is already taken. Try another.' });
+    }
+    const r = await qx(
+      "INSERT INTO users (code, name, role, phone, password_hash) VALUES ($1, $2, 'salesman', $3, $4) RETURNING *",
+      [cleanCode, cleanName, String(phone || '').trim() || null, hashPassword(String(password))],
+    );
+    const user = r.rows[0];
+    const token = await createSession(user);
+    res.status(201).json({ token, user: publicUser(user) });
+  } catch (err) {
+    // Concurrent signup of the same code: the UNIQUE constraint decides.
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: 'That login code is already taken. Try another.' });
+    }
+    next(err);
+  }
+});
+
 router.post('/logout', async (req, res) => {
   const header = req.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;

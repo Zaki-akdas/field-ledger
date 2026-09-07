@@ -6,7 +6,7 @@ import { useRange } from '../../components/AdminLayout.jsx';
 import { useToast } from '../../lib/context.jsx';
 import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js';
 import {
-  Card, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
+  Btn, Card, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
 } from '../../components/ui.jsx';
 import AttachmentPhoto from '../../components/AttachmentPhoto.jsx';
 import BillEditSheet from '../../components/BillEditSheet.jsx';
@@ -88,6 +88,16 @@ export default function SalesmanDetail() {
             col('Balance', (b) => <Money value={b.balance} />, 'right', 'grid'),
             col('Shop', (b) => b.shop_name),
             col('Date', (b) => dateLabel(b.bill_date)),
+            col('', (b) => (
+              <Btn
+                size="sm"
+                variant="ghost"
+                aria-label={`Edit ${b.invoice_no}`}
+                onClick={(e) => { e.stopPropagation(); setEditing(b); }}
+              >
+                Edit
+              </Btn>
+            )),
           ]}
           rows={data.bills}
           rowProps={(b) => ({

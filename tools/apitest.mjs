@@ -119,9 +119,38 @@ async function main() {
 
   const admin = await login('admin', 'admin123');
   check('Admin can sign in', admin.status === 200 && admin.data.user.role === 'admin');
+
+  /* ---------------------------------------------------------- signup --- */
+  // Open salesman self-registration: role pinned server-side, code shape and
+  // password length validated, duplicates refused, session issued on success.
+  const regCode = `SIGNUP-${Date.now()}`;
+  const badShape = await call('POST', '/auth/register', { body: { code: 'x', name: 'Probe', password: 'signup123' } });
+  check('Signup rejects a too-short code', badShape.status === 400, String(badShape.status));
+  const weakPw = await call('POST', '/auth/register', { body: { code: regCode, name: 'Probe', password: '123' } });
+  check('Signup rejects a weak password', weakPw.status === 400, String(weakPw.status));
+  const okReg = await call('POST', '/auth/register', { body: { code: regCode, name: 'Signup Probe', password: 'signup123' } });
+  check('Signup creates a salesman and issues a session',
+    okReg.status === 201 && okReg.data.user.role === 'salesman' && Boolean(okReg.data.token),
+    JSON.stringify(okReg.data?.user || okReg.data));
+  const dupReg = await call('POST', '/auth/register', { body: { code: regCode.toLowerCase(), name: 'Probe Again', password: 'signup123' } });
+  check('Signup refuses a duplicate code (case-insensitive)', dupReg.status === 409, String(dupReg.status));
+  const regUser = okReg.data.user;
+  const regMe = await call('GET', '/auth/me', { token: okReg.data.token });
+  check('Signup session authenticates', regMe.status === 200 && regMe.data.user.id === regUser.id, String(regMe.status));
+  const noAdmin = await call('GET', '/admin/salesmen', { token: okReg.data.token });
+  check('Signup cannot mint admin access', noAdmin.status === 403, String(noAdmin.status));
   const A = admin.data.token;
 
-  const slm = await login('SLM-01', 'field123');
+  // The suite's working salesman comes from its own signup — the book may be
+  // empty (fresh install) where no provisioned salesman exists to log in as.
+  const slmCode = `SLMAPITEST`; // stable code: re-runs reuse the same account
+  let slm = await login(slmCode, 'field123');
+  if (slm.status !== 200) {
+    slm = await call('POST', '/auth/register', { body: { code: slmCode, name: 'API Test Salesman', password: 'field123' } });
+    check('Suite salesman self-registers', slm.status === 201 && slm.data.user.role === 'salesman', JSON.stringify(slm.data?.user || slm.data));
+    // Re-login after registration to get a fresh token
+    slm = await login(slmCode, 'field123');
+  }
   check('Salesman can sign in', slm.status === 200 && slm.data.user.role === 'salesman');
   const S = slm.data.token;
 
@@ -314,7 +343,7 @@ async function main() {
       JSON.stringify(pat));
 
     // Route scoping: the same shop is invisible to another salesman's lens.
-    const other = await login('SLM-02', 'field123');
+    const other = await call('POST', '/auth/register', { body: { code: 'SLMOTHER', name: 'Other Route', password: 'field123' } });
     const otherPat = (await call('GET', `/shops/${splitBill.shop_id}/payment-pattern`, { token: other.data.token })).data.pattern;
     check('A salesman cannot read another route\'s shop pattern', otherPat === null, JSON.stringify(otherPat));
 
@@ -544,6 +573,9 @@ async function main() {
       await client.query('DELETE FROM cancellations WHERE bill_id = $1', [id]);
       await client.query('DELETE FROM bills WHERE id = $1', [id]);
     }
+    // Sandbox accounts go last: their shops/bills must be gone first (FK).
+    await client.query("DELETE FROM shops WHERE salesman_id IN (SELECT id FROM users WHERE code LIKE 'SIGNUP-%' OR code IN ('SLMAPITEST','SLMOTHER','UI-SIGNUP','EDITBTN'))");
+    await client.query("DELETE FROM users WHERE code LIKE 'SIGNUP-%' OR code IN ('SLMAPITEST','SLMOTHER','UI-SIGNUP','EDITBTN')");
     return bills.length;
   });
   for (const name of storedFiles) await deleteFile(name);

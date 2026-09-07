@@ -4,7 +4,7 @@ import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { useToast } from '../../lib/context.jsx';
 import { money, dateLabel, STATUS_LABEL } from '../../lib/format.js';
 import {
-  Chips, ErrorNote, Input, Loading, Money, Pill, ResponsiveTable, col,
+  Btn, Chips, ErrorNote, Input, Loading, Money, Pill, ResponsiveTable, col,
 } from '../../components/ui.jsx';
 import BillEditSheet from '../../components/BillEditSheet.jsx';
 
@@ -88,6 +88,16 @@ export default function Bills() {
             col('Shop', (b) => b.shop_name),
             col('Salesman', (b) => <span><span className="num text-ink-faint">{b.salesman_code}</span> {b.salesman_name}</span>),
             col('Date', (b) => dateLabel(b.bill_date)),
+            col('', (b) => (
+              <Btn
+                size="sm"
+                variant="ghost"
+                aria-label={`Edit ${b.invoice_no}`}
+                onClick={(e) => { e.stopPropagation(); setEditing(b); }}
+              >
+                Edit
+              </Btn>
+            )),
           ]}
           rows={bills}
           rowProps={(b) => ({

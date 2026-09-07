@@ -276,3 +276,17 @@ router.post('/bills/delete', async (req, res, next) => {
     res.json(await deleteBills({ ids: req.body.ids, user: req.user }));
   } catch (err) { next(err); }
 });
+
+router.delete('/salesmen/:id', async (req, res, next) => {
+  try {
+    const { deleteSalesman } = await import('../mutations.js');
+    res.json(await deleteSalesman({ salesmanId: req.params.id, user: req.user }));
+  } catch (err) { next(err); }
+});
+
+router.post('/salesmen/delete', async (req, res, next) => {
+  try {
+    const { deleteSalesmen } = await import('../mutations.js');
+    res.json(await deleteSalesmen({ ids: req.body.ids, user: req.user }));
+  } catch (err) { next(err); }
+});

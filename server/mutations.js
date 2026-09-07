@@ -491,6 +491,41 @@ export async function deleteBills({ ids, user }) {
   return { deleted, skipped };
 }
 
+/* ------------------------------------------------------------ salesman delete --- */
+
+/** Deactivate a salesman (soft-delete). Admin only. Refuses if they have any bills. */
+export async function deleteSalesman({ salesmanId, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage salesmen.');
+  const id = Number(salesmanId);
+  if (!id) throw new HttpError(400, 'Invalid salesman id.');
+  const s = await q1('SELECT id, code, name, role FROM users WHERE id = $1 AND role = $2', [id, 'salesman']);
+  if (!s) throw new HttpError(404, 'Salesman not found.');
+  const billCount = await q1('SELECT COUNT(*)::int AS n FROM bills WHERE salesman_id = $1', [id]);
+  if (billCount.n > 0) {
+    throw new HttpError(409, `${s.name} has ${billCount.n} bill${billCount.n > 1 ? 's' : ''} — delete or reassign them first.`);
+  }
+  await q1('DELETE FROM users WHERE id = $1', [id]);
+  return { deleted: true, salesman: s };
+}
+
+/** Bulk-deactivate salesmen (soft-delete). Admin only. Skips those with bills. */
+export async function deleteSalesmen({ ids, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage salesmen.');
+  const idList = Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
+  if (idList.length === 0) throw new HttpError(400, 'Send an array of salesman ids to delete.');
+  const deleted = [];
+  const skipped = [];
+  for (const id of idList) {
+    try {
+      await deleteSalesman({ salesmanId: id, user });
+      deleted.push(id);
+    } catch (err) {
+      skipped.push({ id, reason: err.message });
+    }
+  }
+  return { deleted, skipped };
+}
+
 export const SYNC_TYPES = {
   bill: createBill,
   collection: recordCollection,

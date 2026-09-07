@@ -447,6 +447,50 @@ export async function addShortItems({ payload = {}, user }) {
   return { bill: await billRow(bill.id), short_total: total };
 }
 
+/* ------------------------------------------------------------ delete --- */
+
+/** Delete a single bill (admin only). Refuses if the bill has collections against it. */
+export async function deleteBill({ billId, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can delete bills.');
+  const bill = await billRow(Number(billId));
+  if (!bill) throw new HttpError(404, 'Bill not found.');
+  if (bill.collected_amount > 0) {
+    throw new HttpError(409, `₹${bill.collected_amount.toLocaleString('en-IN')} is already collected — cancel or refund before deleting.`);
+  }
+  if (bill.short_count > 0) {
+    throw new HttpError(409, 'This bill has shortage records — remove them before deleting.');
+  }
+  await tx(async (client) => {
+    // Delete associated audit trail, shop if orphaned, and the bill itself.
+    await client.query('DELETE FROM bill_edits WHERE bill_id = $1', [bill.id]);
+    await client.query('DELETE FROM bills WHERE id = $1', [bill.id]);
+    // Remove the shop if it has no other bills.
+    const other = await client.query('SELECT 1 FROM bills WHERE shop_id = $1 LIMIT 1', [bill.shop_id]);
+    if (other.rows.length === 0) {
+      await client.query('DELETE FROM shops WHERE id = $1', [bill.shop_id]);
+    }
+  });
+  return { deleted: true };
+}
+
+/** Bulk-delete multiple bills (admin only). Skips bills with collections; returns counts. */
+export async function deleteBills({ ids, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can delete bills.');
+  const idList = Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
+  if (idList.length === 0) throw new HttpError(400, 'Send an array of bill ids to delete.');
+  const deleted = [];
+  const skipped = [];
+  for (const id of idList) {
+    try {
+      await deleteBill({ billId: id, user });
+      deleted.push(id);
+    } catch (err) {
+      skipped.push({ id, reason: err.message });
+    }
+  }
+  return { deleted, skipped };
+}
+
 export const SYNC_TYPES = {
   bill: createBill,
   collection: recordCollection,

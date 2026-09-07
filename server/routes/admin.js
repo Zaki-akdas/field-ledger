@@ -260,3 +260,19 @@ router.get('/bills', async (req, res, next) => {
     res.json({ range: { from, to }, bills: filtered });
   } catch (err) { next(err); }
 });
+
+/* ------------------------------------------------------------ delete --- */
+
+router.delete('/bills/:id', async (req, res, next) => {
+  try {
+    const { deleteBill } = await import('../mutations.js');
+    res.json(await deleteBill({ billId: req.params.id, user: req.user }));
+  } catch (err) { next(err); }
+});
+
+router.post('/bills/delete', async (req, res, next) => {
+  try {
+    const { deleteBills } = await import('../mutations.js');
+    res.json(await deleteBills({ ids: req.body.ids, user: req.user }));
+  } catch (err) { next(err); }
+});

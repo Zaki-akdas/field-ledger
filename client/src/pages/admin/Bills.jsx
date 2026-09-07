@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange, SalesmanFilter } from '../../components/AdminLayout.jsx';
 import { useToast } from '../../lib/context.jsx';
+import { api } from '../../lib/api.js';
 import { money, dateLabel, STATUS_LABEL } from '../../lib/format.js';
 import {
   Btn, Chips, ErrorNote, Input, Loading, Money, Pill, ResponsiveTable, col,
@@ -16,6 +17,8 @@ export default function Bills() {
   const [status, setStatus] = useState('all');
   const [q, setQ] = useState('');
   const [editing, setEditing] = useState(null);
+  const [selected, setSelected] = useState(new Set());
+  const [busy, setBusy] = useState(false);
   const { push } = useToast();
   const { data, loading, error, reload } = useApi(`/admin/bills?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
   const people = useApi('/salesmen');
@@ -52,6 +55,51 @@ export default function Bills() {
 
   const total = bills.reduce((a, b) => a + b.amount, 0);
 
+  /* ---- selection ---- */
+  const toggleSelect = (id, e) => {
+    e.stopPropagation();
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  /* ---- single delete ---- */
+  const handleDelete = async (bill, e) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete bill ${bill.invoice_no}? This cannot be undone.`)) return;
+    setBusy(true);
+    try {
+      await api.del(`/admin/bills/${bill.id}`);
+      push(`Deleted ${bill.invoice_no}.`, 'success');
+      reload();
+    } catch (err) {
+      push(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* ---- bulk delete ---- */
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!window.confirm(`Delete ${selected.size} bill${selected.size > 1 ? 's' : ''}? Bills with collections will be skipped.`)) return;
+    setBusy(true);
+    try {
+      const r = await api.post('/admin/bills/delete', { ids: [...selected] });
+      const n = r.deleted?.length || 0;
+      const skip = r.skipped?.length || 0;
+      push(n ? `Deleted ${n} bill${n > 1 ? 's' : ''}${skip ? `, skipped ${skip}` : ''}.` : 'Nothing was deleted.', n ? 'success' : 'error');
+      setSelected(new Set());
+      reload();
+    } catch (err) {
+      push(err.message, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div>
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
@@ -63,6 +111,16 @@ export default function Bills() {
           </span>
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm dark:bg-red-950/30">
+          <span className="font-medium text-red-700 dark:text-red-300">{selected.size} selected</span>
+          <Btn size="sm" variant="danger" onClick={handleBulkDelete} disabled={busy}>
+            Delete selected
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Btn>
+        </div>
+      )}
 
       <Chips
         className="mb-3"
@@ -81,6 +139,15 @@ export default function Bills() {
         <ResponsiveTable
           className="max-h-[70vh] overflow-y-auto"
           cols={[
+            col('', (b) => (
+              <input
+                type="checkbox"
+                checked={selected.has(b.id)}
+                onChange={(e) => toggleSelect(b.id, e)}
+                className="h-4 w-4 cursor-pointer accent-red-500"
+                aria-label={`Select ${b.invoice_no}`}
+              />
+            ), 'center', 'grid'),
             col('Invoice', (b) => b.invoice_no, null, 'top'),
             col('Status', (b) => <Pill tone={TONE[b.status]}>{STATUS_LABEL[b.status]}</Pill>, null, 'mid'),
             col('Amount', (b) => <Money value={b.amount} />, 'right', 'grid'),
@@ -89,14 +156,26 @@ export default function Bills() {
             col('Salesman', (b) => <span><span className="num text-ink-faint">{b.salesman_code}</span> {b.salesman_name}</span>),
             col('Date', (b) => dateLabel(b.bill_date)),
             col('', (b) => (
-              <Btn
-                size="sm"
-                variant="ghost"
-                aria-label={`Edit ${b.invoice_no}`}
-                onClick={(e) => { e.stopPropagation(); setEditing(b); }}
-              >
-                Edit
-              </Btn>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Edit ${b.invoice_no}`}
+                  onClick={(e) => { e.stopPropagation(); setEditing(b); }}
+                >
+                  Edit
+                </Btn>
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-500 hover:text-red-700"
+                  aria-label={`Delete ${b.invoice_no}`}
+                  onClick={(e) => handleDelete(b, e)}
+                  disabled={busy}
+                >
+                  Delete
+                </Btn>
+              </div>
             )),
           ]}
           rows={bills}

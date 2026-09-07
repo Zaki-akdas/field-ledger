@@ -4,6 +4,7 @@ import { adminBackLabel, adminOriginOf } from '../../lib/adminBack.js';
 import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
 import { useToast } from '../../lib/context.jsx';
+import { api } from '../../lib/api.js';
 import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js';
 import {
   Btn, Card, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
@@ -89,14 +90,10 @@ export default function SalesmanDetail() {
             col('Shop', (b) => b.shop_name),
             col('Date', (b) => dateLabel(b.bill_date)),
             col('', (b) => (
-              <Btn
-                size="sm"
-                variant="ghost"
-                aria-label={`Edit ${b.invoice_no}`}
-                onClick={(e) => { e.stopPropagation(); setEditing(b); }}
-              >
-                Edit
-              </Btn>
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <Btn size="sm" variant="ghost" aria-label={`Edit ${b.invoice_no}`} onClick={(e) => { e.stopPropagation(); setEditing(b); }}>Edit</Btn>
+                <Btn size="sm" variant="ghost" className="text-red-500 hover:text-red-700" aria-label={`Delete ${b.invoice_no}`} onClick={async (e) => { e.stopPropagation(); if (!window.confirm(`Delete ${b.invoice_no}?`)) return; try { await api.del(`/admin/bills/${b.id}`); push(`Deleted ${b.invoice_no}`, 'success'); reload(); } catch (err) { push(err.message, 'error'); } }}>Delete</Btn>
+              </div>
             )),
           ]}
           rows={data.bills}

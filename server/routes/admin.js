@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../auth.js';
 import { todayISO, isoDaysAgo } from '../dates.js';
 import { upload } from '../uploads.js';
 import fs from 'node:fs';
+import JSZip from 'jszip';
 import { parseStatement, matchStatement, recordMatches } from '../bankImport.js';
 
 export const router = Router();
@@ -317,6 +318,46 @@ router.post('/shops/delete', async (req, res, next) => {
   try {
     const { deleteShops } = await import('../mutations.js');
     res.json(await deleteShops({ ids: req.body.ids, user: req.user }));
+  } catch (err) { next(err); }
+});
+
+/** CSV field escaping: quote when needed, double embedded quotes. */
+const csvCell = (v) => {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+/**
+ * Full-book backup: one CSV per table zipped together. Downloaded from the
+ * factory-reset sheet so there is always a restorable snapshot before the
+ * wipe. Includes users (with password hashes — keep the file private).
+ */
+const BACKUP_TABLES = [
+  'users', 'shops', 'products', 'bills', 'collections', 'cash_denominations',
+  'bank_matches', 'short_items', 'cancellations', 'bill_edits', 'day_sessions',
+];
+
+router.get('/backup', async (req, res, next) => {
+  try {
+    const zip = new JSZip();
+    for (const table of BACKUP_TABLES) {
+      const colRows = await q(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+        [table],
+      );
+      const cols = colRows.map((r) => r.column_name);
+      const rows = await q(`SELECT ${cols.map((c) => `"${c}"`).join(',')} FROM ${table}`);
+      const lines = [cols.map(csvCell).join(',')];
+      for (const row of rows) lines.push(cols.map((c) => csvCell(row[c])).join(','));
+      zip.file(`${table}.csv`, lines.join('\r\n') + '\r\n');
+    }
+    const date = new Date().toISOString().slice(0, 10);
+    const body = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="field-ledger-backup-${date}.zip"`);
+    res.send(body);
   } catch (err) { next(err); }
 });
 

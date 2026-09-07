@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { createContext, useContext, useCallback, useMemo, useState } from 'react';
 import { useAuth } from '../lib/context.jsx';
-import { downloadExport, api } from '../lib/api.js';
+import { downloadExport, downloadBackup, api } from '../lib/api.js';
 import { shiftISO, todayISO } from '../lib/format.js';
 import { useToast } from '../lib/context.jsx';
 import { useDarkMode } from '../lib/hooks.js';
@@ -44,6 +44,7 @@ export default function AdminLayout() {
   const [resetOpen, setResetOpen] = useState(false);
   const [resetWord, setResetWord] = useState('');
   const [resetBusy, setResetBusy] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
 
   // Live updates — subscribe so pages can react to data changes (badge counts etc.)
   useRealtime();
@@ -137,6 +138,12 @@ export default function AdminLayout() {
               </NavLink>
             ))}
           </nav>
+          {/* Mobile: factory reset lives here because the sidebar footer is desktop-only. */}
+          <div className="border-t border-line px-4 py-2 lg:hidden">
+            <button type="button" onClick={() => { setResetWord(''); setResetOpen(true); }} className="text-[11.5px] text-attention/70 hover:text-attention transition-colors">
+              Factory reset
+            </button>
+          </div>
           <div className="hidden lg:block border-t border-line px-4 py-4 text-[12.5px] text-ink-soft">
             <p className="font-medium text-ink">{user?.name}</p>
             <p className="text-ink-faint">{user?.code}</p>
@@ -231,6 +238,17 @@ export default function AdminLayout() {
       <Sheet open={resetOpen} onClose={() => setResetOpen(false)} title="Factory reset" footer={
         <>
           <Btn variant="secondary" block onClick={() => setResetOpen(false)} disabled={resetBusy}>Cancel</Btn>
+          <Btn block disabled={backupBusy || resetBusy} onClick={async () => {
+            setBackupBusy(true);
+            try {
+              const name = await downloadBackup();
+              push(`Backup saved — ${name}`, 'success');
+            } catch (err) {
+              push(err.message, 'error');
+            } finally {
+              setBackupBusy(false);
+            }
+          }}>{backupBusy ? <Spinner /> : null}Download backup</Btn>
           <Btn variant="danger" block disabled={resetWord !== 'DELETE' || resetBusy} onClick={async () => {
             setResetBusy(true);
             try {
@@ -247,7 +265,7 @@ export default function AdminLayout() {
         </>
       }>
         <p className="text-[13.5px] text-ink-soft mb-3">This permanently deletes <strong>all bills, collections, shops, products, and salesman accounts</strong>. Only admin logins survive.</p>
-        <p className="text-[13.5px] text-ink-soft mb-3">Type <strong className="text-attention">DELETE</strong> below to confirm.</p>
+        <p className="text-[13.5px] text-ink-soft mb-3"><strong className="text-ink">Download the backup first</strong> — it saves every table as CSV files in one zip, so the book can be restored if needed. Then type <strong className="text-attention">DELETE</strong> to confirm.</p>
         <Input value={resetWord} onChange={(e) => setResetWord(e.target.value)} placeholder="Type DELETE" mono className="border-attention focus:border-attention" />
       </Sheet>
 

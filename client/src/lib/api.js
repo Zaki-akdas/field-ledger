@@ -87,6 +87,31 @@ export async function downloadExport(report, params = {}, format = 'xlsx') {
   return filename;
 }
 
+/** Downloads the full-book CSV backup zip (see GET /api/admin/backup). */
+export async function downloadBackup() {
+  const res = await fetch('/api/admin/backup', {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = `Backup failed (${res.status}).`;
+    try { msg = JSON.parse(text)?.error || msg; } catch { /* html error page */ }
+    throw new ApiError(msg, { status: res.status });
+  }
+  const blob = await res.blob();
+  const disp = res.headers.get('content-disposition') || '';
+  const filename = /filename="([^"]+)"/.exec(disp)?.[1] || 'field-ledger-backup.zip';
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return filename;
+}
+
 const FILE_TYPES = {
   pdf: 'application/pdf',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -67,6 +67,11 @@ export default function Salesmen() {
       return next;
     });
   };
+  const allVisible = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggleAll = (e) => {
+    e.stopPropagation();
+    setSelected(allVisible ? new Set() : new Set(rows.map((r) => r.id)));
+  };
 
   /* ---- single delete ---- */
   const handleDelete = async (r, e) => {
@@ -136,7 +141,11 @@ export default function Salesmen() {
               className="h-4 w-4 cursor-pointer accent-red-500"
               aria-label={`Select ${r.code}`}
             />
-          ), 'center', 'grid'),
+          ), 'center', 'grid', () => (
+            <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <input type="checkbox" checked={allVisible} onChange={toggleAll} className="h-4 w-4 cursor-pointer accent-red-500" aria-label="Select all" />
+            </label>
+          )),
           ...COLUMNS.map((c) => col(
             c.label,
             (r) => {
@@ -185,13 +194,13 @@ export default function Salesmen() {
               </button>
             ),
           )),
-          col('', (r) => (
+          col('Actions', (r) => (
             <Btn
               size="sm"
               variant="ghost"
               className="text-red-500 hover:text-red-700"
               aria-label={`Delete ${r.code}`}
-              onClick={(e) => handleDelete(r, e)}
+              onClick={(e) => { e.stopPropagation(); handleDelete(r, e); }}
               disabled={busy}
             >
               Delete

@@ -11,6 +11,16 @@ import BillEditSheet from '../../components/BillEditSheet.jsx';
 
 const TONE = { delivered: 'settled', partial: 'attention', pending: 'neutral', cancelled: 'attention' };
 
+/** Shared action buttons rendered below each mobile card and inside the table. */
+function BillActions({ b, busy, onEdit, onDelete }) {
+  return (
+    <div className="flex items-center gap-2 pt-2 mt-2 border-t border-line md:border-0 md:pt-0 md:mt-0" onClick={(e) => e.stopPropagation()}>
+      <Btn size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); onEdit(b); }}>Edit</Btn>
+      <Btn size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); onDelete(b, e); }} disabled={busy}>Delete</Btn>
+    </div>
+  );
+}
+
 export default function Bills() {
   useTitle('Bills');
   const { from, to, salesmanId, setSalesman } = useRange();
@@ -65,6 +75,12 @@ export default function Bills() {
     });
   };
 
+  const allVisible = bills.length > 0 && bills.every((b) => selected.has(b.id));
+  const toggleAll = (e) => {
+    e.stopPropagation();
+    setSelected(allVisible ? new Set() : new Set(bills.map((b) => b.id)));
+  };
+
   /* ---- single delete ---- */
   const handleDelete = async (bill, e) => {
     e.stopPropagation();
@@ -115,9 +131,7 @@ export default function Bills() {
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm dark:bg-red-950/30">
           <span className="font-medium text-red-700 dark:text-red-300">{selected.size} selected</span>
-          <Btn size="sm" variant="danger" onClick={handleBulkDelete} disabled={busy}>
-            Delete selected
-          </Btn>
+          <Btn size="sm" variant="danger" onClick={handleBulkDelete} disabled={busy}>Delete selected</Btn>
           <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Btn>
         </div>
       )}
@@ -147,7 +161,11 @@ export default function Bills() {
                 className="h-4 w-4 cursor-pointer accent-red-500"
                 aria-label={`Select ${b.invoice_no}`}
               />
-            ), 'center', 'grid'),
+            ), 'center', 'grid', () => (
+              <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                <input type="checkbox" checked={allVisible} onChange={toggleAll} className="h-4 w-4 cursor-pointer accent-red-500" aria-label="Select all" />
+              </label>
+            )),
             col('Invoice', (b) => b.invoice_no, null, 'top'),
             col('Status', (b) => <Pill tone={TONE[b.status]}>{STATUS_LABEL[b.status]}</Pill>, null, 'mid'),
             col('Amount', (b) => <Money value={b.amount} />, 'right', 'grid'),
@@ -155,27 +173,8 @@ export default function Bills() {
             col('Shop', (b) => b.shop_name),
             col('Salesman', (b) => <span><span className="num text-ink-faint">{b.salesman_code}</span> {b.salesman_name}</span>),
             col('Date', (b) => dateLabel(b.bill_date)),
-            col('', (b) => (
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                <Btn
-                  size="sm"
-                  variant="ghost"
-                  aria-label={`Edit ${b.invoice_no}`}
-                  onClick={(e) => { e.stopPropagation(); setEditing(b); }}
-                >
-                  Edit
-                </Btn>
-                <Btn
-                  size="sm"
-                  variant="ghost"
-                  className="text-red-500 hover:text-red-700"
-                  aria-label={`Delete ${b.invoice_no}`}
-                  onClick={(e) => handleDelete(b, e)}
-                  disabled={busy}
-                >
-                  Delete
-                </Btn>
-              </div>
+            col('Actions', (b) => (
+              <BillActions b={b} busy={busy} onEdit={setEditing} onDelete={handleDelete} />
             )),
           ]}
           rows={bills}

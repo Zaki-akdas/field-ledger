@@ -89,8 +89,8 @@ export default function SalesmanDetail() {
             col('Balance', (b) => <Money value={b.balance} />, 'right', 'grid'),
             col('Shop', (b) => b.shop_name),
             col('Date', (b) => dateLabel(b.bill_date)),
-            col('', (b) => (
-              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            col('Actions', (b) => (
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 <Btn size="sm" variant="ghost" aria-label={`Edit ${b.invoice_no}`} onClick={(e) => { e.stopPropagation(); setEditing(b); }}>Edit</Btn>
                 <Btn size="sm" variant="ghost" className="text-red-500 hover:text-red-700" aria-label={`Delete ${b.invoice_no}`} onClick={async (e) => { e.stopPropagation(); if (!window.confirm(`Delete ${b.invoice_no}?`)) return; try { await api.del(`/admin/bills/${b.id}`); push(`Deleted ${b.invoice_no}`, 'success'); reload(); } catch (err) { push(err.message, 'error'); } }}>Delete</Btn>
               </div>

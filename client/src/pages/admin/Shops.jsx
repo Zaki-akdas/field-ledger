@@ -36,6 +36,11 @@ export default function Shops() {
       return next;
     });
   };
+  const allVisible = shops.length > 0 && shops.every((s) => selected.has(s.id));
+  const toggleAll = (e) => {
+    e.stopPropagation();
+    setSelected(allVisible ? new Set() : new Set(shops.map((s) => s.id)));
+  };
 
   /* ---- single delete ---- */
   const handleDelete = async (s, e) => {
@@ -103,7 +108,11 @@ export default function Shops() {
               className="h-4 w-4 cursor-pointer accent-red-500"
               aria-label={`Select ${s.name}`}
             />
-          ), 'center', 'grid'),
+          ), 'center', 'grid', () => (
+            <label className="flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+              <input type="checkbox" checked={allVisible} onChange={toggleAll} className="h-4 w-4 cursor-pointer accent-red-500" aria-label="Select all" />
+            </label>
+          )),
           col('Shop', (s) => (
             <span>
               <span className="block text-[13.5px] font-medium">{s.name}</span>
@@ -115,13 +124,13 @@ export default function Shops() {
           col('Salesman', (s) => s.salesman_code ? <span><span className="num text-ink-faint">{s.salesman_code}</span> {s.salesman_name}</span> : '—'),
           col('Bills', (s) => <span className="num">{s.bill_count}</span>, 'right'),
           col('Billed', (s) => <Money value={s.billed} />, 'right'),
-          col('', (s) => (
+          col('Actions', (s) => (
             <Btn
               size="sm"
               variant="ghost"
               className="text-red-500 hover:text-red-700"
               aria-label={`Delete ${s.name}`}
-              onClick={(e) => handleDelete(s, e)}
+              onClick={(e) => { e.stopPropagation(); handleDelete(s, e); }}
               disabled={busy}
             >
               Delete

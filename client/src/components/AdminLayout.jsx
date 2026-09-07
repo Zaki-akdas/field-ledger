@@ -15,6 +15,7 @@ const NAV = [
   { to: '/admin', label: 'Reconciliation', end: true },
   { to: '/admin/collection', label: 'Collection report' },
   { to: '/admin/salesmen', label: 'Salesmen' },
+  { to: '/admin/shops', label: 'Shops' },
   { to: '/admin/bills', label: 'Bills' },
   { to: '/admin/cancellations', label: 'Cancellations' },
   { to: '/admin/shortages', label: 'Shortages' },

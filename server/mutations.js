@@ -526,6 +526,41 @@ export async function deleteSalesmen({ ids, user }) {
   return { deleted, skipped };
 }
 
+/* ------------------------------------------------------------ shop delete --- */
+
+/** Delete a shop (admin only). Refuses if the shop has any bills. */
+export async function deleteShop({ shopId, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage shops.');
+  const id = Number(shopId);
+  if (!id) throw new HttpError(400, 'Invalid shop id.');
+  const s = await q1('SELECT id, name, area FROM shops WHERE id = $1', [id]);
+  if (!s) throw new HttpError(404, 'Shop not found.');
+  const billCount = await q1('SELECT COUNT(*)::int AS n FROM bills WHERE shop_id = $1', [id]);
+  if (billCount.n > 0) {
+    throw new HttpError(409, `${s.name} has ${billCount.n} bill${billCount.n > 1 ? 's' : ''} — delete or reassign them first.`);
+  }
+  await q1('DELETE FROM shops WHERE id = $1', [id]);
+  return { deleted: true, shop: s };
+}
+
+/** Bulk-delete shops (admin only). Skips those with bills; returns counts. */
+export async function deleteShops({ ids, user }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage shops.');
+  const idList = Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
+  if (idList.length === 0) throw new HttpError(400, 'Send an array of shop ids to delete.');
+  const deleted = [];
+  const skipped = [];
+  for (const id of idList) {
+    try {
+      await deleteShop({ shopId: id, user });
+      deleted.push(id);
+    } catch (err) {
+      skipped.push({ id, reason: err.message });
+    }
+  }
+  return { deleted, skipped };
+}
+
 export const SYNC_TYPES = {
   bill: createBill,
   collection: recordCollection,

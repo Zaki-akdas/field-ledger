@@ -26,6 +26,7 @@ import Cancellations from './pages/admin/Cancellations.jsx';
 import Shortages from './pages/admin/Shortages.jsx';
 import CashRollup from './pages/admin/CashRollup.jsx';
 import AdminUpload from './pages/admin/Upload.jsx';
+import Shops from './pages/admin/Shops.jsx';
 
 function Guard({ children, role }) {
   const { user, loading } = useAuth();
@@ -88,6 +89,7 @@ export default function App() {
               <Route path="collection" element={<CollectionReport />} />
               <Route path="salesmen" element={<Salesmen />} />
               <Route path="salesmen/:id" element={<SalesmanDetail />} />
+              <Route path="shops" element={<Shops />} />
               <Route path="bills" element={<AdminBills />} />
               <Route path="cancellations" element={<Cancellations />} />
               <Route path="shortages" element={<Shortages />} />

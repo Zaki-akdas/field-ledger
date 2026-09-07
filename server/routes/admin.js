@@ -290,3 +290,32 @@ router.post('/salesmen/delete', async (req, res, next) => {
     res.json(await deleteSalesmen({ ids: req.body.ids, user: req.user }));
   } catch (err) { next(err); }
 });
+
+/* ------------------------------------------------------------ shops --- */
+
+router.get('/shops', async (req, res, next) => {
+  try {
+    const rows = await q(
+      `SELECT s.*, u.code AS salesman_code, u.name AS salesman_name,
+        (SELECT COUNT(*)::int FROM bills b WHERE b.shop_id = s.id) AS bill_count,
+        (SELECT COALESCE(SUM(b.amount::numeric),0)::float8 FROM bills b WHERE b.shop_id = s.id) AS billed
+      FROM shops s
+      LEFT JOIN users u ON u.id = s.salesman_id
+      ORDER BY s.name`);
+    res.json({ shops: rows });
+  } catch (err) { next(err); }
+});
+
+router.delete('/shops/:id', async (req, res, next) => {
+  try {
+    const { deleteShop } = await import('../mutations.js');
+    res.json(await deleteShop({ shopId: req.params.id, user: req.user }));
+  } catch (err) { next(err); }
+});
+
+router.post('/shops/delete', async (req, res, next) => {
+  try {
+    const { deleteShops } = await import('../mutations.js');
+    res.json(await deleteShops({ ids: req.body.ids, user: req.user }));
+  } catch (err) { next(err); }
+});

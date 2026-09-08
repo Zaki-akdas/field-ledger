@@ -8,10 +8,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-and-build:
     name: Lint · build · class check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,9 +39,13 @@ jobs:
       - name: Check Tailwind classes
         run: npm run check:classes
 
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
   tests:
     name: API regression + UI smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16

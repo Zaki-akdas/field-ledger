@@ -81,7 +81,7 @@ export default function Me() {
   const step = ended ? 5 : started ? (closed > 0 ? 3 : 2) : 1;
 
   return (
-    <div className="pb-6">
+    <div className="pb-28">
       {backLabel && backTo && (
         <Link
           to={backTo}

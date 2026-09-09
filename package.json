@@ -21,9 +21,10 @@
     "db:init": "node --env-file-if-exists=.env tools/init-db.mjs",
     "db:migrate": "node --env-file-if-exists=.env tools/migrate-amounts-numeric.mjs",
     "apitest": "node --env-file-if-exists=.env tools/apitest.mjs",
+ "test:trash": "node --env-file-if-exists=.env tools/trash-e2e.mjs",
     "leaktest": "node --env-file-if-exists=.env tools/leaktest.mjs",
     "loadtest": "node tools/loadtest.mjs",
-    "verify": "npm run build && npm run check:classes && npm run smoke"
+    "verify": "npm run build && npm run check:classes && npm run smoke && npm run test:trash"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.0.13",
@@ -56,5 +57,8 @@
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "vite": "^5.4.10"
+  },
+  "overrides": {
+    "qs": "~6.16.0"
   }
 }

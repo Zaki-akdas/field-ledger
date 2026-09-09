@@ -111,6 +111,7 @@ export function SyncProvider({ children }) {
   const [queue, setQueue] = useState(() => outbox.list());
   const [flushing, setFlushing] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  const flushingRef = useRef(false);
   const toast = useRef(null);
   const { push } = useContext(ToastContext) || {};
 
@@ -123,7 +124,10 @@ export function SyncProvider({ children }) {
 
   const flush = useCallback(async () => {
     const pending = outbox.list();
-    if (pending.length === 0 || flushing) return { synced: 0, failed: 0 };
+    // Use a ref for the lock so two concurrent callers (e.g. going online +
+    // queue change) can never both slip past the guard.
+    if (pending.length === 0 || flushingRef.current) return { synced: 0, failed: 0 };
+    flushingRef.current = true;
     setFlushing(true);
     try {
       const data = await api.post('/sync', { ops: pending });
@@ -146,9 +150,10 @@ export function SyncProvider({ children }) {
     } catch (err) {
       return { synced: 0, failed: pending.length, errors: [err.message] };
     } finally {
+      flushingRef.current = false;
       setFlushing(false);
     }
-  }, [flushing]);
+  }, []);
 
   useEffect(() => {
     const goOnline = () => { setOnline(true); setTimeout(flush, 400); };

@@ -51,6 +51,7 @@ export default function BillDetail() {
     <div>
       <FieldHeader title={back ? `Bill · opened from ${backLabel(back)}` : 'Bill'} back={back ?? '/field/bills'} backState={back ? { back } : undefined} />
 
+      <div className="pb-28">
       <Card className="p-4">
         <p className="num text-[15.5px] font-medium">{bill.invoice_no}</p>
         <h2 className="mt-0.5 text-[19px] font-semibold leading-tight tracking-tight">{bill.shop_name}</h2>
@@ -186,6 +187,7 @@ export default function BillDetail() {
           </div>
         </div>
       )}
+      </div>
 
       <Sheet
         open={confirmUndo}

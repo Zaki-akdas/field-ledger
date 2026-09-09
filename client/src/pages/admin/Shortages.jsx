@@ -30,7 +30,7 @@ export default function Shortages() {
       </div>
 
       {loading ? <Loading label="Loading shortages…" /> : error ? <ErrorNote>{error.message}</ErrorNote> : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px] xl:grid-cols-[minmax(0,1fr)_320px]">
           <ResponsiveTable
             className="max-h-[70vh] overflow-y-auto"
             cols={[

@@ -1,8 +1,9 @@
 import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import { money, money2 } from '../lib/format.js';
+import { broadcastRefresh, useBodyScrollLock, useEscape } from '../lib/hooks.js';
 
 export { money, money2 };
-import { useBodyScrollLock, useEscape } from '../lib/hooks.js';
 
 export function cx(...parts) {
   return parts.filter(Boolean).join(' ');
@@ -115,6 +116,100 @@ export function IconBtn({ label, children, className = '', ...rest }) {
     >
       {children}
     </button>
+  );
+}
+
+/* ------------------------------------------------------------- refresh ---
+ * Manual refresh for when live sync lags. Broadcasts a single event that
+ * every mounted useApi hook hears, so one tap refetches the whole screen —
+ * no full page reload.
+ */
+export function RefreshButton({ label = 'Refresh data', className = '' }) {
+  const [spinning, setSpinning] = useState(false);
+  const onRefresh = () => {
+    if (spinning) return;
+    setSpinning(true);
+    broadcastRefresh();
+    // Long enough to feel like a real refetch, short enough not to annoy.
+    setTimeout(() => setSpinning(false), 700);
+  };
+  return (
+    <button
+      type="button"
+      onClick={onRefresh}
+      aria-label={label}
+      title={label}
+      className={cx(
+        'inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-soft transition-colors hover:bg-paper hover:text-ink active:scale-95',
+        className,
+      )}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="17"
+        height="17"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        className={cx(spinning && 'animate-spin')}
+      >
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+        <path d="M21 3v6h-6" />
+      </svg>
+    </button>
+  );
+}
+
+/* ----------------------------------------------------------- hard delete ---
+ * Confirmation sheet for the irreversible purge. The admin types PURGE and
+ * re-enters their password — the password is verified server-side on every
+ * call, so a stolen session alone can never wipe records.
+ */
+export function PurgeSheet({ open, onClose, title, description, onConfirm, busy }) {
+  const [word, setWord] = useState('');
+  const [password, setPassword] = useState('');
+  const ready = word === 'PURGE' && password.length > 0;
+  const close = () => { setWord(''); setPassword(''); onClose(); };
+  return (
+    <Sheet
+      open={open}
+      onClose={close}
+      title={title}
+      footer={(
+        <>
+          <Btn variant="secondary" block disabled={busy} onClick={close}>Cancel</Btn>
+          <Btn
+            variant="danger"
+            block
+            disabled={busy || !ready}
+            onClick={async () => {
+              try { await onConfirm(password); close(); } catch { /* caller toasts the error */ }
+            }}
+          >
+            {busy ? <Spinner /> : null}
+            Delete forever
+          </Btn>
+        </>
+      )}
+    >
+      <div className="space-y-3">
+        <ErrorNote>
+          This is a hard delete. Every linked record goes with it from the
+          live ledger — but a full snapshot waits in the Trash bin for 30
+          days, so you can still put it back if this was a mistake.
+        </ErrorNote>
+        <p className="text-[14px] text-ink-soft">{description}</p>
+        <Field label={`Type PURGE to enable the button`}>
+          <Input value={word} onChange={(e) => setWord(e.target.value.toUpperCase())} placeholder="PURGE" autoCapitalize="characters" className="font-mono" />
+        </Field>
+        <Field label="Your password">
+          <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+        </Field>
+      </div>
+    </Sheet>
   );
 }
 
@@ -422,7 +517,7 @@ export function ResponsiveTable({ cols, rows, footer, empty, className = '', row
 export function TableWrap({ children, className = '' }) {
   return (
     <div className={cx('overflow-x-auto rounded-xl border border-line bg-surface contain-scroll', className)}>
-      <table className="table-dense min-w-[480px]">{children}</table>
+      <table className="table-dense min-w-[480px] w-full grow">{children}</table>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useAuth, useSync } from '../lib/context.jsx';
 import { useApi, useDarkMode } from '../lib/hooks.js';
 import { useRealtime } from '../lib/realtime.js';
 import { todayISO, money } from '../lib/format.js';
-import { cx, Money, Spinner } from './ui.jsx';
+import { cx, Money, Spinner, RefreshButton } from './ui.jsx';
 
 const NAV = [
   { to: '/field/bills', label: 'Bills', icon: 'M4 6h16M4 12h16M4 18h10' },
@@ -98,13 +98,16 @@ export default function FieldLayout() {
               )}
               <span className="ml-2 text-[11.5px] font-sans font-normal text-ink-faint">collected</span>
             </p>
-            <p className="num mt-0.5 text-[11.5px] leading-tight text-ink-soft">
+            <p className="num mt-0.5 text-[11.5px] leading-tight text-ink-soft flex flex-wrap gap-x-1">
               {loading && !data ? '…' : (
                 <>
-                  billed <span className="font-medium text-ink">₹{money(billed)}</span>
-                  {' · '}due <span className="font-medium text-ink">₹{money(due)}</span>
-              {' · '}<span className={pendingCount > 0 ? 'text-attention-deep font-medium' : ''}>{pendingCount}</span> pending
-                  {' · '}<span className="font-medium">{deliveredCount}</span> delivered
+                  <span>billed <span className="font-medium text-ink">₹{money(billed)}</span></span>
+                  <span aria-hidden>·</span>
+                  <span>due <span className="font-medium text-ink">₹{money(due)}</span></span>
+                  <span aria-hidden>·</span>
+                  <span><span className={pendingCount > 0 ? 'text-attention-deep font-medium' : ''}>{pendingCount}</span> pending</span>
+                  <span aria-hidden>·</span>
+                  <span><span className="font-medium">{deliveredCount}</span> delivered</span>
                 </>
               )}
               <svg
@@ -145,6 +148,7 @@ export default function FieldLayout() {
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               )}
             </button>
+            <RefreshButton label="Refresh data" className="h-8 w-8" />
             <span className="hidden sm:inline text-[12px] text-ink-soft">{user?.name}</span>
           </div>
         </div>
@@ -172,28 +176,29 @@ export default function FieldLayout() {
 
       <main key={location.pathname} className="anim-rise mx-auto max-w-[560px] px-3 pb-28 pt-3 sm:px-4 sm:pt-4">
         <Outlet context={{ pendingCount, summary: data, reloadSummary: reload }} />
-      </main>
-
-      <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
-        <div className="mx-auto flex max-w-[560px]">
+      </main>      <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-line bg-paper/95 backdrop-blur safe-bottom lg:pb-2 lg:pt-1">
+        <div className="mx-auto flex max-w-[560px] items-center justify-around px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) => cx(
-                'anim-press flex-1 flex flex-col items-center justify-center gap-1 py-2 text-[11.5px] font-medium transition-colors min-h-[48px] touch-target',
-                isActive ? 'text-ink' : 'text-ink-faint hover:text-ink-soft',
+                'anim-press flex-1 flex flex-col items-center justify-center gap-1 text-[11.5px] font-medium transition-colors min-h-[48px] touch-target',
+                isActive
+                  ? 'text-ink ring-1 ring-inset ring-ink/25 lg:px-3 lg:pt-2 lg:pb-3'
+                  : 'text-ink-faint hover:text-ink-soft lg:px-3 lg:pt-2 lg:pb-3',
               )}
             >
               {({ isActive }) => (
                 <>
-                  <span className={cx('relative', isActive && 'text-settled')}>
+                  <span className={cx('relative flex items-center justify-center', isActive && 'text-settled')}>
                     <NavIcon path={item.icon} />
                     {item.to === '/field/collect' && pendingCount > 0 && (
-                      <span className="absolute -right-2 -top-1.5 num flex h-4 min-w-4 items-center justify-center rounded-full bg-attention px-1 text-[10px] font-semibold text-white">
+                      <span className="num absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-attention px-1 text-[10px] font-semibold text-white">
                         {pendingCount}
                       </span>
-                    )}
+                    )
+                  }
                   </span>
                   {item.label}
                 </>

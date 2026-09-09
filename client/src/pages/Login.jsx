@@ -43,7 +43,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-full lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
+    <div className="min-h-dvh lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
       {/* The product statement — ink panel, no decoration. */}
       <section className="hidden lg:flex flex-col justify-between bg-ink px-12 py-14 text-paper">
         <div>
@@ -67,7 +67,7 @@ Variance = Expected − Actual`}
         </div>
       </section>
 
-      <section className="flex items-center justify-center px-5 py-8 sm:px-10 sm:py-10">
+      <section className="flex items-center justify-center px-5 py-8 safe-top sm:px-10 sm:py-10">
         <div className="anim-rise w-full max-w-sm">
           <div className="flex items-center justify-between mb-6">
             <div className="lg:hidden">

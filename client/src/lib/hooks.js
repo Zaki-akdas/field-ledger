@@ -50,6 +50,14 @@ export function useDarkMode() {
   return { dark, toggle };
 }
 
+const REFRESH_EVENT = 'field-ledger:refresh-all';
+
+/** Ask every mounted useApi to refetch at once — wired to the RefreshButton.
+ * Safer than window.location.reload(): keeps SPA state, no full boot. */
+export function broadcastRefresh() {
+  window.dispatchEvent(new Event(REFRESH_EVENT));
+}
+
 export function useApi(path, deps = []) {
   const [state, setState] = useState({ data: null, loading: true, error: null });
   const [nonce, setNonce] = useState(0);
@@ -57,14 +65,28 @@ export function useApi(path, deps = []) {
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
 
+  // A manual refresh anywhere bumps this hook's nonce so the data on screen
+  // refetches without a full page reload.
+  useEffect(() => {
+    const onRefresh = () => setNonce((n) => n + 1);
+    window.addEventListener(REFRESH_EVENT, onRefresh);
+    return () => window.removeEventListener(REFRESH_EVENT, onRefresh);
+  }, []);
+
   useEffect(() => {
     if (!path) { setState({ data: null, loading: false, error: null }); return; }
-    let alive = true;
+    const ctrl = new AbortController();
     setState((s) => ({ ...s, loading: true }));
-    api.get(path)
-      .then((data) => { if (alive) setState({ data, loading: false, error: null }); })
-      .catch((err) => { if (alive) setState({ data: null, loading: false, error: err }); });
-    return () => { alive = false; };
+    api.get(path, { signal: ctrl.signal })
+      .then((data) => { if (!ctrl.signal.aborted) setState({ data, loading: false, error: null }); })
+      .catch((err) => {
+        if (ctrl.signal.aborted) return;
+        // AbortError means the component unmounted or path changed — don't
+        // update state at all, the new effect is already in flight.
+        if (err?.name === 'AbortError') return;
+        setState({ data: null, loading: false, error: err });
+      });
+    return () => ctrl.abort();
   }, [path, nonce, key]);
 
   return { ...state, reload };

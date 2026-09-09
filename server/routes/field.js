@@ -265,6 +265,9 @@ router.get('/me/dashboard', handle(async (req, res) => {
 
 /* -------------------------------------------------------------- lookups --- */
 
+/** Escape SQL LIKE wildcards so user input is matched literally. */
+const escapeLike = (s) => String(s).replace(/%/g, '\\%').replace(/_/g, '\\_');
+
 router.get('/shops', handle(async (req, res) => {
   const needle = String(req.query.q || '').trim();
   const salesmanId = req.user.role === 'admin' ? null : req.user.id;
@@ -272,7 +275,7 @@ router.get('/shops', handle(async (req, res) => {
     SELECT id, name, area, owner_name FROM shops
     WHERE ($1::int IS NULL OR salesman_id = $1)
       AND ($2 = '' OR lower(name) LIKE '%' || lower($2) || '%' OR lower(COALESCE(area,'')) LIKE '%' || lower($2) || '%')
-    ORDER BY name LIMIT 40`, [salesmanId, needle]);
+    ORDER BY name LIMIT 40`, [salesmanId, escapeLike(needle)]);
   res.json({ shops: rows });
 }));
 

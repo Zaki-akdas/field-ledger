@@ -31,7 +31,7 @@ export default function BankRecon() {
   const [recording, setRecording] = useState(false);
   const [doneMsg, setDoneMsg] = useState(null);
 
-  const existing = useApi('/admin/bank/matches', { deps: [doneMsg] });
+  const existing = useApi('/admin/bank/matches', [doneMsg]);
 
   const tickable = useMemo(
     () => (preview?.rows || []).filter((r) => r.matched),

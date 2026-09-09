@@ -4,7 +4,7 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money } from '../../lib/format.js';
 import {
-  Btn, ErrorNote, Input, Loading, Money, ResponsiveTable, col,
+  Btn, ErrorNote, Input, Loading, Money, PurgeSheet, ResponsiveTable, col,
 } from '../../components/ui.jsx';
 
 export default function Shops() {
@@ -12,6 +12,8 @@ export default function Shops() {
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState(false);
+  const [purging, setPurging] = useState(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
   const { push } = useToast();
   const { data, loading, error, reload } = useApi('/admin/shops');
 
@@ -55,6 +57,22 @@ export default function Shops() {
       push(err.message, 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  /* ---- single hard delete ---- */
+  const handlePurge = async (password) => {
+    setPurgeBusy(true);
+    try {
+      const r = await api.post(`/admin/shops/${purging.id}/purge`, { password });
+      push(`Hard-deleted ${purging.name}${r.bills_removed ? ` and its ${r.bills_removed} bill${r.bills_removed > 1 ? 's' : ''}` : ''}. Restorable from Trash for 30 days.`, 'success');
+      setPurging(null);
+      reload();
+    } catch (err) {
+      push(err.message, 'error');
+      throw err;
+    } finally {
+      setPurgeBusy(false);
     }
   };
 
@@ -125,20 +143,41 @@ export default function Shops() {
           col('Bills', (s) => <span className="num">{s.bill_count}</span>, 'right'),
           col('Billed', (s) => <Money value={s.billed} />, 'right'),
           col('Actions', (s) => (
-            <Btn
-              size="sm"
-              variant="ghost"
-              className="text-red-500 hover:text-red-700"
-              aria-label={`Delete ${s.name}`}
-              onClick={(e) => { e.stopPropagation(); handleDelete(s, e); }}
-              disabled={busy}
-            >
-              Delete
-            </Btn>
+            <span className="flex items-center gap-1">
+              <Btn
+                size="sm"
+                variant="ghost"
+                className="text-red-500 hover:text-red-700"
+                aria-label={`Delete ${s.name}`}
+                onClick={(e) => { e.stopPropagation(); handleDelete(s, e); }}
+                disabled={busy}
+              >
+                Delete
+              </Btn>
+              <Btn
+                size="sm"
+                variant="ghost"
+                className="text-red-600 hover:text-red-800"
+                aria-label={`Hard delete ${s.name}`}
+                onClick={(e) => { e.stopPropagation(); setPurging(s); }}
+                disabled={busy}
+              >
+                Hard delete
+              </Btn>
+            </span>
           )),
         ]}
         rows={shops}
         empty={<p className="py-10 text-center text-ink-faint">No shops match these filters.</p>}
+      />
+
+      <PurgeSheet
+        open={!!purging}
+        onClose={() => setPurging(null)}
+        title={`Hard delete ${purging?.name || ''}?`}
+        description={purging ? `Shop ${purging.name} and every bill ever raised against it (${purging.bill_count || 0} bill${purging.bill_count === 1 ? '' : 's'}, ₹${money(purging.billed || 0)}) are removed permanently — collections, shortages and history included.` : ''}
+        onConfirm={handlePurge}
+        busy={purgeBusy}
       />
     </div>
   );

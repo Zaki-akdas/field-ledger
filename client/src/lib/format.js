@@ -48,9 +48,10 @@ export function dateLabel(iso) {
 }
 
 export function todayISO() {
-  const now = new Date();
-  const p = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  // Use the same business timezone the server uses (Asia/Kolkata) so the
+  // client and server always agree on "today" — avoids date mismatches when
+  // a phone is set to a different timezone.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 }
 
 export function shiftISO(iso, days) {

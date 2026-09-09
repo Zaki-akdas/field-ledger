@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { reconcile, cashRollup, round2, q1, q } from '../db.js';
-import { requireAuth, requireRole } from '../auth.js';
+import { requireAuth, requireRole, verifyPassword } from '../auth.js';
 import { todayISO, isoDaysAgo } from '../dates.js';
 import { upload } from '../uploads.js';
 import fs from 'node:fs';
@@ -307,6 +307,43 @@ router.get('/shops', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/** Open bills across the current period, one row per salesman. Used by the
+ * sidebar indicator so an admin can see at a glance how much is still open
+ * and which salesmen are carrying the balance.
+ */
+router.get('/bills/pending-summary', async (req, res, next) => {
+  try {
+    const { from, to, salesmanId } = rangeOf(req);
+    const whereSalesman = salesmanId ? 'AND u.id = $1' : '';
+    const whereDate = 'b.bill_date BETWEEN $2 AND $3';
+    const params = salesmanId ? [salesmanId, from, to] : [from, to];
+    const rows = await q(`
+      SELECT u.id, u.code, u.name,
+        COUNT(*)::int AS bill_count,
+        COALESCE(SUM(b.amount::numeric),0)::float8 AS bill_amount,
+        COALESCE(SUM(CASE WHEN b.cancelled_at IS NOT NULL THEN b.amount::numeric ELSE 0 END),0)::float8 AS cancelled_amount,
+        COALESCE(SUM(COALESCE(si.amount::numeric,0)),0)::float8 AS short_amount,
+        COALESCE(SUM(COALESCE(c.amount::numeric,0)),0)::float8 AS collected_amount,
+        COALESCE(SUM(CASE WHEN b.cancelled_at IS NULL THEN b.amount::numeric - COALESCE(si.amount::numeric,0) - COALESCE(c.amount::numeric,0) ELSE 0 END),0)::float8 AS outstanding
+      FROM bills b
+      JOIN users u ON u.id = b.salesman_id
+      LEFT JOIN short_items si ON si.bill_id = b.id
+      LEFT JOIN collections c ON c.bill_id = b.id
+      WHERE ${whereDate} ${whereSalesman}
+      GROUP BY u.id, u.code, u.name
+      ORDER BY u.code`, params);
+
+    const totalOutstanding = round2(rows.reduce((a, r) => a + (Number(r.outstanding) || 0), 0));
+    const totalOpen = rows.reduce((a, r) => a + Number(r.bill_count), 0);
+
+    res.json({
+      range: { from, to },
+      salesmen: rows,
+      total: { outstanding: totalOutstanding, open: totalOpen },
+    });
+  } catch (err) { next(err); }
+});
+
 router.delete('/shops/:id', async (req, res, next) => {
   try {
     const { deleteShop } = await import('../mutations.js');
@@ -321,6 +358,52 @@ router.post('/shops/delete', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/* ------------------------------------------------- hard delete (purge) ---
+ * Irreversible removal that ignores the usual safety checks. Every purge
+ * requires the admin's password in the body — a stolen session alone can't
+ * wipe records (same guard as factory reset).
+ */
+const purge = (fn, pick) => async (req, res, next) => {
+  try {
+    const mod = await import('../mutations.js');
+    res.json(await mod[fn]({ ...pick(req), user: req.user, password: req.body?.password }));
+  } catch (err) { next(err); }
+};
+
+router.post('/bills/:id/purge', purge('purgeBill', (req) => ({ billId: req.params.id })));
+router.post('/shops/:id/purge', purge('purgeShop', (req) => ({ shopId: req.params.id })));
+router.post('/salesmen/:id/purge', purge('purgeSalesman', (req) => ({ salesmanId: req.params.id })));
+
+/* ------------------------------------------------------------- trash bin ---
+ * Hard deletes land here as restorable snapshots for 30 days.
+ */
+
+/** Everything currently in the bin, newest first. Also sweeps expired rows. */
+router.get('/trash', async (req, res, next) => {
+  try {
+    const { sweepExpiredTrash, listTrash } = await import('../trash.js');
+    const swept = await sweepExpiredTrash();
+    const entries = await listTrash();
+    res.json({ entries, swept });
+  } catch (err) { next(err); }
+});
+
+/** Put a purged record back into the live ledger. */
+router.post('/trash/:id/restore', async (req, res, next) => {
+  try {
+    const { restoreTrash } = await import('../trash.js');
+    res.json(await restoreTrash({ trashId: req.params.id, user: req.user }));
+  } catch (err) { next(err); }
+});
+
+/** Wipe one bin entry for good — after this, restore is impossible. */
+router.post('/trash/:id/purge', async (req, res, next) => {
+  try {
+    const { purgeTrash } = await import('../trash.js');
+    res.json(await purgeTrash({ trashId: req.params.id, user: req.user }));
+  } catch (err) { next(err); }
+});
+
 /** CSV field escaping: quote when needed, double embedded quotes. */
 const csvCell = (v) => {
   if (v === null || v === undefined) return '';
@@ -331,7 +414,7 @@ const csvCell = (v) => {
 /**
  * Full-book backup: one CSV per table zipped together. Downloaded from the
  * factory-reset sheet so there is always a restorable snapshot before the
- * wipe. Includes users (with password hashes — keep the file private).
+ * wipe. Password hashes are stripped from the users table for safety.
  */
 const BACKUP_TABLES = [
   'users', 'shops', 'products', 'bills', 'collections', 'cash_denominations',
@@ -347,7 +430,7 @@ router.get('/backup', async (req, res, next) => {
          WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
         [table],
       );
-      const cols = colRows.map((r) => r.column_name);
+      const cols = colRows.map((r) => r.column_name).filter((c) => !(table === 'users' && c === 'password_hash'));
       const rows = await q(`SELECT ${cols.map((c) => `"${c}"`).join(',')} FROM ${table}`);
       const lines = [cols.map(csvCell).join(',')];
       for (const row of rows) lines.push(cols.map((c) => csvCell(row[c])).join(','));
@@ -364,10 +447,18 @@ router.get('/backup', async (req, res, next) => {
 /** Factory reset — wipe every ledger table but keep admin accounts. */
 router.post('/factory-reset', async (req, res, next) => {
   try {
-    // Require the magic word to prevent accidental clicks
-    const { confirm } = req.body || {};
+    // Require the magic word AND the admin's password — a stolen session
+    // alone must not be enough to wipe the entire database.
+    const { confirm, password } = req.body || {};
     if (confirm !== 'DELETE') {
       return res.status(400).json({ error: 'Type DELETE to confirm factory reset.' });
+    }
+    if (!password) {
+      return res.status(400).json({ error: 'Enter your password to confirm the factory reset.' });
+    }
+    const admin = await q1('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (!admin || !verifyPassword(String(password), admin.password_hash)) {
+      return res.status(400).json({ error: 'Wrong password. Factory reset was not performed.' });
     }
 
     // Truncate in FK-safe order; keep users table intact (admins survive)

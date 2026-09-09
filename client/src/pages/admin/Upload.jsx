@@ -38,8 +38,8 @@ export default function Upload() {
   };
 
   return (
-    <div className="max-w-3xl">
-      <Card className="p-4 sm:p-5">
+    <div>
+      <Card className="p-4 sm:p-5 mx-auto max-w-3xl">
         <div className="grid gap-3 sm:gap-4 sm:grid-cols-2">
           <Field label="Assign to salesman">
             <Select value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}>

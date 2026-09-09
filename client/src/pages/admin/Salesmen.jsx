@@ -7,7 +7,7 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { relativeTime } from '../../lib/format.js';
 import {
-  Btn, ErrorNote, Loading, Money, ResponsiveTable, Variance, col, cx,
+  Btn, ErrorNote, Loading, Money, PurgeSheet, ResponsiveTable, Variance, col, cx,
 } from '../../components/ui.jsx';
 
 const COLUMNS = [
@@ -33,6 +33,8 @@ export default function Salesmen() {
   const [sort, setSort] = useState({ key: 'variance', dir: 'desc' });
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState(false);
+  const [purging, setPurging] = useState(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
   const { push } = useToast();
   const { data, loading, error, reload } = useApi(`/admin/salesmen?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
   const people = useApi('/salesmen');
@@ -87,6 +89,23 @@ export default function Salesmen() {
       push(err.message, 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  /* ---- single hard delete ---- */
+  const handlePurge = async (password) => {
+    setPurgeBusy(true);
+    try {
+      await api.post(`/admin/salesmen/${purging.id}/purge`, { password });
+      push(`Hard-deleted ${purging.name}. Their whole book is restorable from Trash for 30 days.`, 'success');
+      setPurging(null);
+      reload();
+      if (people.reload) people.reload();
+    } catch (err) {
+      push(err.message, 'error');
+      throw err;
+    } finally {
+      setPurgeBusy(false);
     }
   };
 
@@ -195,16 +214,28 @@ export default function Salesmen() {
             ),
           )),
           col('Actions', (r) => (
-            <Btn
-              size="sm"
-              variant="ghost"
-              className="text-red-500 hover:text-red-700"
-              aria-label={`Delete ${r.code}`}
-              onClick={(e) => { e.stopPropagation(); handleDelete(r, e); }}
-              disabled={busy}
-            >
-              Delete
-            </Btn>
+            <span className="flex items-center gap-1">
+              <Btn
+                size="sm"
+                variant="ghost"
+                className="text-red-500 hover:text-red-700"
+                aria-label={`Delete ${r.code}`}
+                onClick={(e) => { e.stopPropagation(); handleDelete(r, e); }}
+                disabled={busy}
+              >
+                Delete
+              </Btn>
+              <Btn
+                size="sm"
+                variant="ghost"
+                className="text-red-600 hover:text-red-800"
+                aria-label={`Hard delete ${r.code}`}
+                onClick={(e) => { e.stopPropagation(); setPurging(r); }}
+                disabled={busy}
+              >
+                Hard delete
+              </Btn>
+            </span>
           )),
         ]}
         rows={rows}
@@ -230,6 +261,15 @@ export default function Salesmen() {
       <p className="mt-2 text-[12px] text-ink-faint">
         Click a row to open that salesman's bills, collections, cancellations and shortages.
       </p>
+
+      <PurgeSheet
+        open={!!purging}
+        onClose={() => setPurging(null)}
+        title={`Hard delete ${purging?.name || ''}?`}
+        description={purging ? `Salesman ${purging.name} (${purging.code}) and their entire book are removed permanently — every bill, collection, shortage, cancellation, change record and their login. This cannot be undone.` : ''}
+        onConfirm={handlePurge}
+        busy={purgeBusy}
+      />
     </div>
   );
 }

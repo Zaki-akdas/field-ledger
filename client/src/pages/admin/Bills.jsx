@@ -5,18 +5,19 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money, dateLabel, STATUS_LABEL } from '../../lib/format.js';
 import {
-  Btn, Chips, ErrorNote, Input, Loading, Money, Pill, ResponsiveTable, col,
+  Btn, Chips, ErrorNote, Input, Loading, Money, Pill, PurgeSheet, ResponsiveTable, col,
 } from '../../components/ui.jsx';
 import BillEditSheet from '../../components/BillEditSheet.jsx';
 
 const TONE = { delivered: 'settled', partial: 'attention', pending: 'neutral', cancelled: 'attention' };
 
 /** Shared action buttons rendered below each mobile card and inside the table. */
-function BillActions({ b, busy, onEdit, onDelete }) {
+function BillActions({ b, busy, onEdit, onDelete, onPurge }) {
   return (
     <div className="flex items-center gap-2 pt-2 mt-2 border-t border-line md:border-0 md:pt-0 md:mt-0" onClick={(e) => e.stopPropagation()}>
       <Btn size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); onEdit(b); }}>Edit</Btn>
       <Btn size="sm" variant="ghost" className="text-red-500 hover:text-red-700" onClick={(e) => { e.stopPropagation(); onDelete(b, e); }} disabled={busy}>Delete</Btn>
+      <Btn size="sm" variant="ghost" className="text-red-600 hover:text-red-800" onClick={(e) => { e.stopPropagation(); onPurge(b); }} disabled={busy}>Hard delete</Btn>
     </div>
   );
 }
@@ -29,6 +30,8 @@ export default function Bills() {
   const [editing, setEditing] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [busy, setBusy] = useState(false);
+  const [purging, setPurging] = useState(null);
+  const [purgeBusy, setPurgeBusy] = useState(false);
   const { push } = useToast();
   const { data, loading, error, reload } = useApi(`/admin/bills?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
   const people = useApi('/salesmen');
@@ -94,6 +97,22 @@ export default function Bills() {
       push(err.message, 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  /* ---- single hard delete ---- */
+  const handlePurge = async (password) => {
+    setPurgeBusy(true);
+    try {
+      await api.post(`/admin/bills/${purging.id}/purge`, { password });
+      push(`Hard-deleted ${purging.invoice_no}. Restorable from Trash for 30 days.`, 'success');
+      setPurging(null);
+      reload();
+    } catch (err) {
+      push(err.message, 'error');
+      throw err;
+    } finally {
+      setPurgeBusy(false);
     }
   };
 
@@ -174,7 +193,7 @@ export default function Bills() {
             col('Salesman', (b) => <span><span className="num text-ink-faint">{b.salesman_code}</span> {b.salesman_name}</span>),
             col('Date', (b) => dateLabel(b.bill_date)),
             col('Actions', (b) => (
-              <BillActions b={b} busy={busy} onEdit={setEditing} onDelete={handleDelete} />
+              <BillActions b={b} busy={busy} onEdit={setEditing} onDelete={handleDelete} onPurge={setPurging} />
             )),
           ]}
           rows={bills}
@@ -192,6 +211,15 @@ export default function Bills() {
       )}
 
       <BillEditSheet bill={editing} onClose={() => setEditing(null)} onSaved={onEdited} />
+
+      <PurgeSheet
+        open={!!purging}
+        onClose={() => setPurging(null)}
+        title={`Hard delete ${purging?.invoice_no || ''}?`}
+        description={purging ? `Invoice ${purging.invoice_no} for ${purging.shop_name} (₹${money(purging.amount)}) is removed permanently — collections, shortages, cancellation and its change history all go with it.` : ''}
+        onConfirm={handlePurge}
+        busy={purgeBusy}
+      />
     </div>
   );
 }

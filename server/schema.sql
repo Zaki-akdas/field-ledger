@@ -127,6 +127,25 @@ CREATE TABLE IF NOT EXISTS bill_edits (
 
 CREATE INDEX IF NOT EXISTS idx_bill_edits_bill ON bill_edits(bill_id);
 
+-- Trash bin: hard-deleted records snapshot here as JSONB and stay
+-- restorable for 30 days (server/trash.js), then auto-wipe.
+CREATE TABLE IF NOT EXISTS trash (
+  id SERIAL PRIMARY KEY,
+  entity TEXT NOT NULL CHECK (entity IN ('bill', 'shop', 'salesman')),
+  entity_id INTEGER,
+  label TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  deleted_by INTEGER REFERENCES users(id),
+  deleted_by_name TEXT,
+  deleted_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text,
+  expires_at TEXT NOT NULL,
+  purged_at TEXT,
+  purged_by INTEGER REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trash_expires ON trash(expires_at);
+CREATE INDEX IF NOT EXISTS idx_trash_entity ON trash(entity, entity_id);
+
 CREATE TABLE IF NOT EXISTS day_sessions (
   id SERIAL PRIMARY KEY,
   salesman_id INTEGER NOT NULL REFERENCES users(id),
@@ -143,7 +162,6 @@ CREATE INDEX IF NOT EXISTS idx_bills_salesman ON bills(salesman_id);
 CREATE INDEX IF NOT EXISTS idx_col_bill ON collections(bill_id);
 CREATE INDEX IF NOT EXISTS idx_col_date ON collections(collection_date);
 CREATE INDEX IF NOT EXISTS idx_col_salesman ON collections(salesman_id);
-CREATE INDEX IF NOT EXISTS idx_bill_edits_bill ON bill_edits(bill_id);
 
 -- ── Pre-auth lookups (SECURITY DEFINER) ────────────────────────────────────
 -- Login and token→user resolution run before a JWT actor exists, so RLS

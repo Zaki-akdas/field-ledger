@@ -68,7 +68,7 @@ export default function UpiQr({ amount = 0, note = '', className = '' }) {
   const waHref = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
   return (
-    <div className={`anim-scale flex items-center gap-3.5 rounded-lg border border-line bg-paper p-3 ${className}`}>
+    <div className={`anim-scale flex flex-col items-center gap-3.5 rounded-lg border border-line bg-paper p-3 sm:flex-row sm:items-center ${className}`}>
       <a href={uri} aria-label="Open a UPI app to pay" className="anim-press shrink-0">
         <img
           src={qr}
@@ -79,7 +79,7 @@ export default function UpiQr({ amount = 0, note = '', className = '' }) {
           height={132}
         />
       </a>
-      <div className="min-w-0">
+      <div className="min-w-0 text-center sm:text-left">
         <p className="text-[13.5px] font-semibold tracking-tight">Scan to pay online</p>
         <p className="mt-1 text-[12px] leading-snug text-ink-soft">
           Point any UPI app at this code — the bill number rides along with the payment.

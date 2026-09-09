@@ -184,7 +184,12 @@ import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOAD_DIR = path.join(__dirname, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+} catch {
+  // Read-only filesystem (Vercel serverless): attachment storage must be
+  // remote there; this dir is only written by local-disk storage mode.
+}
 
 /**
  * Bills with derived totals. `from`/`to` filter on bill_date.

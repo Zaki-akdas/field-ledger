@@ -79,7 +79,7 @@ export default function Shortage() {
   if (!bill) return <div className="py-10"><ErrorNote>Bill not found.</ErrorNote></div>;
 
   return (
-    <div className="pb-36">
+    <div className="pb-28">
       <FieldHeader title={bill ? `Report shortage · ${bill.invoice_no}` : 'Report shortage'} back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
@@ -148,7 +148,7 @@ export default function Shortage() {
 
       <ErrorNote className="mt-4">{error}</ErrorNote>
 
-      <div className="fixed inset-x-0 bottom-[max(56px,calc(48px+env(safe-area-inset-bottom)))] z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
+      <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom)+0.5rem)] z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-[560px] px-4 py-3">
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[12.5px] text-ink-soft">Total shortage</span>

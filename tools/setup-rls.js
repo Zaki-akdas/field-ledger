@@ -121,7 +121,7 @@ const tables = [
   'users', 'sessions', 'shops', 'products',
   'bills', 'collections', 'cash_denominations',
   'short_items', 'cancellations', 'day_sessions',
-  'bill_edits', 'bank_matches',
+  'bill_edits', 'bank_matches', 'trash',
 ];
 
 for (const table of tables) {
@@ -419,6 +419,16 @@ await c.query(`
     );
 `);
 console.log('✓ bank_matches policies');
+
+// ── trash (restorable snapshots of hard-deleted records) ──
+await c.query(`
+  -- Trash is office business: only admins see, create, or clear bin entries.
+  -- (Salesmen never touch the bin; restores are admin-only for the same
+  -- reason purges are.)
+  CREATE POLICY "trash_admin_all" ON trash
+    FOR ALL USING (is_admin()) WITH CHECK (is_admin());
+`);
+console.log('✓ trash policies');
 
 // ────────────────────────────────────────────────────────────
 // 5. Verify

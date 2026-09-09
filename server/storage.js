@@ -20,7 +20,15 @@ import { createClient } from '@supabase/supabase-js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const UPLOAD_DIR = path.join(__dirname, 'uploads');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+try {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+} catch {
+  // Read-only filesystem (Vercel serverless bundles the bundle read-only and
+  // .vercelignore drops this folder): local-disk storage can't be used there.
+  // Attachment storage must be remote (Supabase) on such hosts; writes to
+  // UPLOAD_DIR only happen in local-disk mode, which Vercel never selects
+  // because SUPABASE_URL/SERVICE_KEY are set.
+}
 
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || 'field-ledger';
 const URL = process.env.SUPABASE_URL;

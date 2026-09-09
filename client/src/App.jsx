@@ -27,6 +27,7 @@ import Shortages from './pages/admin/Shortages.jsx';
 import CashRollup from './pages/admin/CashRollup.jsx';
 import AdminUpload from './pages/admin/Upload.jsx';
 import Shops from './pages/admin/Shops.jsx';
+import Trash from './pages/admin/Trash.jsx';
 
 function Guard({ children, role }) {
   const { user, loading } = useAuth();
@@ -96,6 +97,7 @@ export default function App() {
               <Route path="cash" element={<CashRollup />} />
               <Route path="upload" element={<AdminUpload />} />
               <Route path="bank" element={<BankRecon />} />
+              <Route path="trash" element={<Trash />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

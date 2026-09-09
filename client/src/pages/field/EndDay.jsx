@@ -188,7 +188,7 @@ export default function EndDay() {
   );
 
   return (
-    <div className="pb-10">
+    <div className="pb-28">
       <FieldHeader title={`End day · from ${backLabel(back) || 'My numbers'}`} back={back ?? '/field/me'} backState={back ? { back } : undefined} />
 
       {ended ? (
@@ -251,7 +251,7 @@ export default function EndDay() {
         </div>
 
         {sheet ? (
-          <Card className="overflow-hidden !p-0">{sheet}</Card>
+          <div className="rounded-xl border border-line bg-surface shadow-panel !p-0">{sheet}</div>
         ) : (
           <Card className="p-6 text-center">
             <p className="text-[14px] font-medium">No bills on today's book.</p>

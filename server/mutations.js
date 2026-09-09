@@ -1,10 +1,12 @@
 /**
  * Write operations — now async for PostgreSQL.
  */
-import { billRow, round2, q1, qx, tx } from './db.js';
+import { billRow, round2, q1, q, qx, tx } from './db.js';
 import { todayISO } from './dates.js';
 import { saveDataUrl } from './attachments.js';
 import { deleteFile } from './storage.js';
+import { verifyPassword } from './auth.js';
+import { snapshotBill, trashEntity } from './trash.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -80,6 +82,11 @@ export async function createBill({ payload = {}, user }) {
     );
   } catch (err) {
     if (storedFile) await deleteFile(storedFile);
+    // Unique constraint on invoice_no — a concurrent upload of the same
+    // invoice won the race. Surface the friendly message instead of a 500.
+    if (err?.code === '23505') {
+      throw new HttpError(409, `Invoice ${invoiceNo} is already in the book — use a different invoice number.`);
+    }
     throw err;
   }
 
@@ -559,6 +566,125 @@ export async function deleteShops({ ids, user }) {
     }
   }
   return { deleted, skipped };
+}
+
+/* ---------------------------------------------------------- hard delete ---
+ *
+ * Purge = removal from the live ledger that ignores every safety check the
+ * regular delete makes (collections, shortages, cancellations and all
+ * history go with it). Nothing is truly destroyed though: each purge first
+ * writes a full JSONB snapshot into the trash bin, restorable for 30 days.
+ * Guarded twice: admin-only, and the admin must re-enter their own password
+ * on every call — a stolen session alone cannot wipe records.
+ */
+
+/** Verifies the caller re-entered their own password before a purge. */
+async function assertPassword(user, password) {
+  if (!password) throw new HttpError(400, 'Re-enter your password to confirm this delete.');
+  const row = await q1('SELECT password_hash FROM users WHERE id = $1', [user.id]);
+  if (!row || !verifyPassword(String(password), row.password_hash)) {
+    throw new HttpError(401, 'That password is not correct. Nothing was deleted.');
+  }
+}
+
+/** HARD delete one bill — collections, shortages, cancellation and edit
+ * history all move into the trash with it. The shop row is deliberately
+ * kept (purges are surgical, not tidy-ups) and its snapshot is restorable
+ * for 30 days from the Trash page. */
+export async function purgeBill({ billId, user, password }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can hard-delete bills.');
+  await assertPassword(user, password);
+  const bill = await billRow(Number(billId));
+  if (!bill) throw new HttpError(404, 'Bill not found.');
+  return tx(async (client) => {
+    const payload = await snapshotBill(client, bill.id);
+    const t = await trashEntity({
+      entity: 'bill', entityId: bill.id, user,
+      snapshot: payload,
+      label: `${bill.invoice_no} · ${bill.shop_name}`,
+      client,
+    });
+    return { purged: true, id: bill.id, invoice_no: bill.invoice_no, trash_id: t.id, restorable_until: t.expires_at };
+  }, user);
+}
+
+/** HARD delete one shop and every bill ever raised against it. */
+export async function purgeShop({ shopId, user, password }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can hard-delete shops.');
+  await assertPassword(user, password);
+  const id = Number(shopId);
+  if (!id) throw new HttpError(400, 'Invalid shop id.');
+  const shop = await q1('SELECT * FROM shops WHERE id = $1', [id]);
+  if (!shop) throw new HttpError(404, 'Shop not found.');
+  return tx(async (client) => {
+    const billIds = (await q('SELECT id FROM bills WHERE shop_id = $1', [id], client)).map((r) => r.id);
+    const bills = [];
+    for (const bid of billIds) {
+      bills.push(await snapshotBill(client, bid));
+    }
+    // bill_edits carry a shop FK without a bill — snapshot those too.
+    const shopEdits = await q('SELECT * FROM bill_edits WHERE shop_id = $1', [id], client);
+    await client.query('DELETE FROM bill_edits WHERE shop_id = $1', [id]);
+    const salesman = shop.salesman_id
+      ? await q1('SELECT * FROM users WHERE id = $1', [shop.salesman_id], client)
+      : null;
+    await client.query('DELETE FROM shops WHERE id = $1', [id]);
+    const payload = {
+      shop,
+      shop_name: shop.name,
+      salesman,
+      shop_edits: shopEdits,
+      bills,
+    };
+    const t = await trashEntity({
+      entity: 'shop', entityId: id, user,
+      snapshot: payload,
+      label: `${shop.name}${shop.area ? ` · ${shop.area}` : ''} · ${bills.length} bill${bills.length === 1 ? '' : 's'}`,
+      client,
+    });
+    return { purged: true, id, shop: shop.name, bills_removed: bills.length, trash_id: t.id, restorable_until: t.expires_at };
+  }, user);
+}
+
+/** HARD delete one salesman and their entire book — bills, collections,
+ * shortages, cancellations, edit history and sessions all go to the bin. */
+export async function purgeSalesman({ salesmanId, user, password }) {
+  if (user.role !== 'admin') throw new HttpError(403, 'Only the office can hard-delete salesmen.');
+  if (Number(salesmanId) === user.id) throw new HttpError(400, 'You cannot hard-delete your own account.');
+  await assertPassword(user, password);
+  const id = Number(salesmanId);
+  if (!id) throw new HttpError(400, 'Invalid salesman id.');
+  const s = await q1('SELECT * FROM users WHERE id = $1 AND role = $2', [id, 'salesman']);
+  if (!s) throw new HttpError(404, 'Salesman not found.');
+  return tx(async (client) => {
+    const billIds = (await q('SELECT id FROM bills WHERE salesman_id = $1', [id], client)).map((r) => r.id);
+    const bills = [];
+    for (const bid of billIds) {
+      bills.push(await snapshotBill(client, bid));
+    }
+    const shops = await q('SELECT * FROM shops WHERE salesman_id = $1', [id], client);
+    const daySessions = await q('SELECT * FROM day_sessions WHERE salesman_id = $1', [id], client);
+    const edits = await q('SELECT * FROM bill_edits WHERE salesman_id = $1', [id], client);
+    await client.query('DELETE FROM bills WHERE salesman_id = $1', [id]);
+    await client.query('DELETE FROM bill_edits WHERE salesman_id = $1', [id]);
+    await client.query('DELETE FROM users WHERE id = $1', [id]); // sessions cascade
+    const payload = {
+      user: s,
+      user_name: s.name,
+      user_code: s.code,
+      shops,
+      bills,
+      day_sessions: daySessions,
+      salesman_edits: edits,
+    };
+    const t = await trashEntity({
+      entity: 'salesman', entityId: id, user,
+      snapshot: payload,
+      label: `${s.name} (${s.code}) · ${bills.length} bill${bills.length === 1 ? '' : 's'}`,
+      client,
+    });
+    return { purged: true, id, salesman: s.name, bills_removed: bills.length, trash_id: t.id, restorable_until: t.expires_at };
+  }, user);
 }
 
 export const SYNC_TYPES = {

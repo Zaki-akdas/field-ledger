@@ -69,9 +69,7 @@ export default function Reconciliation() {
             <Link to="/admin/salesmen" className="font-medium text-ink underline underline-offset-4">Per salesman</Link>
           </div>
         </div>
-      </Card>
-
-      <div className="grid gap-5 lg:grid-cols-2">
+      </Card>        <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">
           <SectionTitle hint="How the money came in">Collected by mode</SectionTitle>
           <ResponsiveTable
@@ -113,7 +111,7 @@ export default function Reconciliation() {
         </div>
       </div>
 
-      <div>
+      <div className="mt-5 lg:mt-0 xl:col-span-2">
         <SectionTitle
           hint={salesmanId ? 'Filtered to one salesman' : 'Everyone on the route'}
           right={<Link to="/admin/salesmen"><Btn size="sm">Open salesman drill-down</Btn></Link>}

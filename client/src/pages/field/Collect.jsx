@@ -193,7 +193,7 @@ export default function Collect() {
   const shortfall = outstanding - total;
 
   return (
-    <div className="pb-40">
+    <div className="pb-28">
       <FieldHeader title={bill ? `Collect · ${bill.invoice_no}` : 'Collect'} back={`/field/bills/${id}`} backState={back ? { back } : undefined} />
 
       <Card className="p-4">
@@ -386,7 +386,7 @@ export default function Collect() {
       <ErrorNote className="mt-4">{error}</ErrorNote>
 
       {/* Sticky total + the one action that matters */}
-      <div className="fixed inset-x-0 bottom-[max(56px,calc(48px+env(safe-area-inset-bottom)))] z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
+      <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom)+0.5rem)] z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
         <div className="mx-auto max-w-[560px] px-4 py-3">
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[12.5px] text-ink-soft">Collecting</span>

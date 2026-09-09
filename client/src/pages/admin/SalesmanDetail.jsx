@@ -135,7 +135,7 @@ export default function SalesmanDetail() {
         />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0">
           <SectionTitle hint={`${data.cancellations.length} bills · ₹${money(data.cancellations.reduce((a, c) => a + c.amount, 0))}`}>
             Cancellations

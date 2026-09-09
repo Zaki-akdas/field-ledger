@@ -379,19 +379,28 @@ router.post('/salesmen/:id/purge', purge('purgeSalesman', (req) => ({ salesmanId
  */
 router.get('/audit', async (req, res, next) => {
   try {
-    const { listAudit, auditCount } = await import('../audit.js');
-    const [entries, total] = await Promise.all([
-      listAudit({
-        action: req.query.action || undefined,
-        entity: req.query.entity || undefined,
-        actorId: num(req.query.actorId),
-        from: req.query.from || undefined,
-        to: req.query.to || undefined,
-        limit: req.query.limit,
-      }),
-      auditCount(),
-    ]);
-    res.json({ entries, total });
+    const { listAudit } = await import('../audit.js');
+    // Pagination: limit/offset with a filtered total so the UI can size the
+    // pager. Page is 1-based convenience; offset still wins if sent directly.
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 500);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const offset = req.query.offset != null ? Number(req.query.offset) : (page - 1) * limit;
+    const { rows, total } = await listAudit({
+      action: req.query.action || undefined,
+      entity: req.query.entity || undefined,
+      actorId: num(req.query.actorId),
+      from: req.query.from || undefined,
+      to: req.query.to || undefined,
+      limit,
+      offset,
+    });
+    res.json({
+      entries: rows,
+      total,
+      page: Math.floor(offset / limit) + 1,
+      limit,
+      pages: Math.max(Math.ceil(total / limit), 1),
+    });
   } catch (err) { next(err); }
 });
 

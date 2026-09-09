@@ -45,11 +45,14 @@ function detailLine(d) {
   return parts.length ? parts.map((p, i) => <span key={i} className="inline-flex items-center gap-1">{i > 0 && <span className="text-ink-faint">·</span>}{p}</span>) : null;
 }
 
+const PAGE_SIZE = 50;
+
 export default function Audit() {
   useTitle('Audit log');
   const { push } = useToast();
   const [action, setAction] = useState('all');
   const [exporting, setExporting] = useState(null);
+  const [page, setPage] = useState(1);
 
   // Date range: null = all time (the whole book), else a from/to pair.
   // Local state rather than the header ?range= — the log is office-wide and
@@ -61,11 +64,19 @@ export default function Audit() {
     const p = new URLSearchParams();
     if (action !== 'all') p.set('action', action);
     if (range.enabled) { p.set('from', range.from); p.set('to', range.to); }
+    p.set('limit', String(PAGE_SIZE));
+    p.set('page', String(page));
     return p.toString();
-  }, [action, range]);
+  }, [action, range, page]);
 
   const { data, loading, error } = useApi(`/admin/audit${params ? `?${params}` : ''}`);
   const entries = data?.entries || [];
+  const pages = data?.pages || 1;
+  const total = data?.total ?? 0;
+
+  // Any filter change restarts at page 1.
+  const setActionPage = (v) => { setAction(v); setPage(1); };
+  const setRangePage = (fn) => { setRange(fn); setPage(1); };
 
   const exportLog = async (format) => {
     setExporting(format);
@@ -86,7 +97,7 @@ export default function Audit() {
     <div>
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <p className="text-[13px] text-ink-soft">
-          Every delete, hard delete, restore, and wipe — <span className="num font-medium">{data?.total ?? '…'}</span> recorded.
+          Every delete, hard delete, restore, and wipe — <span className="num font-medium">{data ? total : '…'}</span> recorded.
           Append-only: entries can never be edited or removed.
         </p>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -98,7 +109,7 @@ export default function Audit() {
       <Chips
         className="mb-3"
         value={action}
-        onChange={setAction}
+        onChange={setActionPage}
         options={ACTIONS.map((a) => ({ ...a, count: undefined }))}
       />
 
@@ -106,7 +117,7 @@ export default function Audit() {
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5">
         <button
           type="button"
-          onClick={() => setRange((r) => ({ ...r, enabled: !r.enabled }))}
+          onClick={() => setRangePage((r) => ({ ...r, enabled: !r.enabled }))}
           className={cx(
             'rounded-md border px-3 py-2 min-h-[38px] text-[12.5px] font-medium transition-colors',
             range.enabled ? 'border-ink bg-ink text-paper' : 'border-line bg-paper text-ink-soft hover:border-line-strong',
@@ -117,9 +128,9 @@ export default function Audit() {
         </button>
         {range.enabled && (
           <>
-            <Input type="date" value={range.from} onChange={setRangePart('from')} className="h-10 w-[150px] min-h-[38px]" aria-label="From date" />
+            <Input type="date" value={range.from} onChange={(e) => { setRangePart('from')(e); setPage(1); }} className="h-10 w-[150px] min-h-[38px]" aria-label="From date" />
             <span className="text-[12px] text-ink-faint">→</span>
-            <Input type="date" value={range.to} onChange={setRangePart('to')} className="h-10 w-[150px] min-h-[38px]" aria-label="To date" />
+            <Input type="date" value={range.to} onChange={(e) => { setRangePart('to')(e); setPage(1); }} className="h-10 w-[150px] min-h-[38px]" aria-label="To date" />
             <span className="text-[12px] text-ink-faint">
               {range.from > range.to ? <span className="text-attention">From is after to</span> : 'filtering the list and both exports'}
             </span>
@@ -168,6 +179,23 @@ export default function Audit() {
           rows={entries}
           empty={<p className="py-10 text-center text-ink-faint">No entries for this filter.</p>}
         />
+      )}
+
+      {/* Pager — only meaningful when there is more than one page. */}
+      {pages > 1 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5">
+          <p className="num text-[12.5px] text-ink-soft">
+            Page <span className="font-medium text-ink">{data?.page || page}</span> of{' '}
+            <span className="font-medium text-ink">{pages}</span>
+            {' '}· {total} {total === 1 ? 'entry' : 'entries'}
+          </p>
+          <div className="flex items-center gap-1.5">
+            <Btn size="sm" onClick={() => setPage(1)} disabled={page <= 1}>First</Btn>
+            <Btn size="sm" onClick={() => setPage((p) => Math.max(p - 1, 1))} disabled={page <= 1}>Prev</Btn>
+            <Btn size="sm" onClick={() => setPage((p) => Math.min(p + 1, pages))} disabled={page >= pages}>Next</Btn>
+            <Btn size="sm" onClick={() => setPage(pages)} disabled={page >= pages}>Last</Btn>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -230,9 +230,9 @@ export async function buildWorkbook({ report, from, to, salesmanId }) {
   if (report === 'audit') {
     const sheet = wb.addWorksheet('Audit Log');
     sheet.addRow(['Timestamp (UTC)', 'Action', 'Entity', 'Entity ID', 'What', 'Details', 'By (name)', 'By (code)', 'Actor ID']);
-    // Exports want the whole book, not the API's 200-row page — date
+    // Exports want the whole book, not the API's page size — date
     // filters still apply when the caller passed from/to.
-    const rows = await listAudit({ from, to, limit: 100000, maxLimit: 100000 });
+    const { rows } = await listAudit({ from, to, limit: 100000, maxLimit: 100000 });
     for (const e of rows) {
       sheet.addRow([
         e.created_at,
@@ -436,7 +436,7 @@ export async function buildPdf({ report, from, to, salesmanId }) {
     doc.font('Helvetica').fontSize(8.5).fillColor('#5A6B7B')
       .text('Append-only record of deletes, hard deletes, restores and wipes · newest first');
     doc.moveDown(0.5);
-    const rows = await listAudit({ from, to, limit: 100000, maxLimit: 100000 });
+    const { rows } = await listAudit({ from, to, limit: 100000, maxLimit: 100000 });
     const ACTION_WORD = {
       delete: 'Deleted', purge: 'Hard deleted', restore: 'Restored',
       trash_purge: 'Erased from bin', trash_sweep: 'Auto-wiped', factory_reset: 'Factory reset',

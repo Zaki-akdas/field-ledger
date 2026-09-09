@@ -32,9 +32,10 @@ export async function recordAudit({ action, entity, entityId = null, label = nul
   }
 }
 
-/** Read the log, newest first, with optional filters. Admin-only by caller.
- * maxLimit raises the row cap for exports (office records want everything). */
-export async function listAudit({ action, entity, actorId, from, to, limit = 200, maxLimit = 500 } = {}) {
+/** Read the log, newest first, with optional filters and pagination.
+ * Returns { rows, total } — total is the filtered count so the UI can size
+ * the pager without a second query shape. Admin-only by caller. */
+export async function listAudit({ action, entity, actorId, from, to, limit = 200, offset = 0, maxLimit = 500 } = {}) {
   const clauses = [];
   const params = [];
   const add = (sql, val) => {
@@ -46,24 +47,24 @@ export async function listAudit({ action, entity, actorId, from, to, limit = 200
   if (actorId) add('a.actor_id = ?', actorId);
   if (from) add('a.created_at >= ?', from);
   if (to) add('a.created_at <= ?', `${to}~`); // 'YYYY-MM-DD~' sorts after 'YYYY-MM-DDT…' timestamps
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
   // Limit is capped server-side so a caller can't ask for the whole table
   // (exports lift the cap with maxLimit).
   const lim = Math.min(Math.max(Number(limit) || 200, 1), Math.max(Number(maxLimit) || 500, 1));
-  params.push(lim);
+  const off = Math.max(Number(offset) || 0, 0);
 
-  const rows = await q(
-    `SELECT a.*, u.code AS actor_code
-     FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
-     ${clauses.length ? `WHERE ${clauses.join(' AND ')}` : ''}
-     ORDER BY a.id DESC
-     LIMIT $${params.length}`,
-    params,
-  );
-  return rows;
-}
-
-/** Count of rows in the log (for the page header). */
-export async function auditCount() {
-  const r = await q1('SELECT COUNT(*)::int AS n FROM audit_log');
-  return r?.n || 0;
+  const [rows, count] = await Promise.all([
+    q(
+      `SELECT a.*, u.code AS actor_code
+       FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
+       ${where}
+       ORDER BY a.id DESC
+       LIMIT ${lim} OFFSET ${off}`,
+      params,
+    ),
+    // Filtered total for the pager. Same WHERE, no LIMIT — a count over the
+    // indexed table stays cheap even as the log grows.
+    q1(`SELECT COUNT(*)::int AS n FROM audit_log a ${where}`, params),
+  ]);
+  return { rows, total: count?.n || 0 };
 }

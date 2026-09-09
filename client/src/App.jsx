@@ -28,6 +28,7 @@ import CashRollup from './pages/admin/CashRollup.jsx';
 import AdminUpload from './pages/admin/Upload.jsx';
 import Shops from './pages/admin/Shops.jsx';
 import Trash from './pages/admin/Trash.jsx';
+import Audit from './pages/admin/Audit.jsx';
 
 function Guard({ children, role }) {
   const { user, loading } = useAuth();
@@ -98,6 +99,7 @@ export default function App() {
               <Route path="upload" element={<AdminUpload />} />
               <Route path="bank" element={<BankRecon />} />
               <Route path="trash" element={<Trash />} />
+              <Route path="audit" element={<Audit />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

@@ -24,6 +24,7 @@ const NAV = [
   { to: '/admin/bank', label: 'Bank' },
   { to: '/admin/upload', label: 'Upload bills' },
   { to: '/admin/trash', label: 'Trash' },
+  { to: '/admin/audit', label: 'Audit log' },
 ];
 
 function ActiveBadge() {

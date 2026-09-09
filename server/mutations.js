@@ -7,6 +7,7 @@ import { saveDataUrl } from './attachments.js';
 import { deleteFile } from './storage.js';
 import { verifyPassword } from './auth.js';
 import { snapshotBill, trashEntity } from './trash.js';
+import { recordAudit } from './audit.js';
 
 export class HttpError extends Error {
   constructor(status, message) {
@@ -467,6 +468,7 @@ export async function deleteBill({ billId, user }) {
   if (bill.short_count > 0) {
     throw new HttpError(409, 'This bill has shortage records — remove them before deleting.');
   }
+  let shopRemoved = false;
   await tx(async (client) => {
     // Delete associated audit trail, shop if orphaned, and the bill itself.
     await client.query('DELETE FROM bill_edits WHERE bill_id = $1', [bill.id]);
@@ -475,7 +477,14 @@ export async function deleteBill({ billId, user }) {
     const other = await client.query('SELECT 1 FROM bills WHERE shop_id = $1 LIMIT 1', [bill.shop_id]);
     if (other.rows.length === 0) {
       await client.query('DELETE FROM shops WHERE id = $1', [bill.shop_id]);
+      shopRemoved = true;
     }
+  });
+  await recordAudit({
+    action: 'delete', entity: 'bill', entityId: bill.id,
+    label: `${bill.invoice_no} · ${bill.shop_name}`,
+    details: { amount: bill.amount, shop_removed: shopRemoved },
+    actor: user,
   });
   return { deleted: true };
 }
@@ -512,6 +521,11 @@ export async function deleteSalesman({ salesmanId, user }) {
     throw new HttpError(409, `${s.name} has ${billCount.n} bill${billCount.n > 1 ? 's' : ''} — delete or reassign them first.`);
   }
   await q1('DELETE FROM users WHERE id = $1', [id]);
+  await recordAudit({
+    action: 'delete', entity: 'salesman', entityId: id,
+    label: `${s.name} (${s.code})`,
+    actor: user,
+  });
   return { deleted: true, salesman: s };
 }
 
@@ -547,6 +561,11 @@ export async function deleteShop({ shopId, user }) {
     throw new HttpError(409, `${s.name} has ${billCount.n} bill${billCount.n > 1 ? 's' : ''} — delete or reassign them first.`);
   }
   await q1('DELETE FROM shops WHERE id = $1', [id]);
+  await recordAudit({
+    action: 'delete', entity: 'shop', entityId: id,
+    label: s.area ? `${s.name} · ${s.area}` : s.name,
+    actor: user,
+  });
   return { deleted: true, shop: s };
 }
 
@@ -604,6 +623,12 @@ export async function purgeBill({ billId, user, password }) {
       label: `${bill.invoice_no} · ${bill.shop_name}`,
       client,
     });
+    await recordAudit({
+      action: 'purge', entity: 'bill', entityId: bill.id,
+      label: `${bill.invoice_no} · ${bill.shop_name}`,
+      details: { trash_id: t.id, restorable_until: t.expires_at, amount: bill.amount },
+      actor: user,
+    });
     return { purged: true, id: bill.id, invoice_no: bill.invoice_no, trash_id: t.id, restorable_until: t.expires_at };
   }, user);
 }
@@ -641,6 +666,12 @@ export async function purgeShop({ shopId, user, password }) {
       snapshot: payload,
       label: `${shop.name}${shop.area ? ` · ${shop.area}` : ''} · ${bills.length} bill${bills.length === 1 ? '' : 's'}`,
       client,
+    });
+    await recordAudit({
+      action: 'purge', entity: 'shop', entityId: id,
+      label: `${shop.name}${shop.area ? ` · ${shop.area}` : ''}`,
+      details: { trash_id: t.id, restorable_until: t.expires_at, bills_removed: bills.length },
+      actor: user,
     });
     return { purged: true, id, shop: shop.name, bills_removed: bills.length, trash_id: t.id, restorable_until: t.expires_at };
   }, user);
@@ -682,6 +713,12 @@ export async function purgeSalesman({ salesmanId, user, password }) {
       snapshot: payload,
       label: `${s.name} (${s.code}) · ${bills.length} bill${bills.length === 1 ? '' : 's'}`,
       client,
+    });
+    await recordAudit({
+      action: 'purge', entity: 'salesman', entityId: id,
+      label: `${s.name} (${s.code})`,
+      details: { trash_id: t.id, restorable_until: t.expires_at, bills_removed: bills.length },
+      actor: user,
     });
     return { purged: true, id, salesman: s.name, bills_removed: bills.length, trash_id: t.id, restorable_until: t.expires_at };
   }, user);

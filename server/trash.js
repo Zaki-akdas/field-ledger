@@ -16,6 +16,7 @@
  * skips those parent inserts (id-based ON CONFLICT DO NOTHING).
  */
 import { q, q1, tx } from './db.js';
+import { recordAudit } from './audit.js';
 
 /** Same shape as mutations.HttpError — defined here to avoid a circular import. */
 class HttpError extends Error {
@@ -178,6 +179,12 @@ export async function restoreTrash({ trashId, user }) {
   }
   await restoreFromTrash(entry.payload);
   await q('UPDATE trash SET purged_at = now()::text, purged_by = $1 WHERE id = $2', [user.id, entry.id]);
+  await recordAudit({
+    action: 'restore', entity: entry.entity, entityId: entry.entity_id,
+    label: entry.label,
+    details: { trash_id: entry.id },
+    actor: user,
+  });
   return { restored: true, id: entry.id, entity: entry.entity, label: entry.label };
 }
 
@@ -185,15 +192,29 @@ export async function restoreTrash({ trashId, user }) {
 export async function purgeTrash({ trashId, user }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can empty the bin.');
   const r = await q(
-    'UPDATE trash SET purged_at = now()::text, purged_by = $1 WHERE id = $2 AND purged_at IS NULL RETURNING id, label',
+    'UPDATE trash SET purged_at = now()::text, purged_by = $1 WHERE id = $2 AND purged_at IS NULL RETURNING id, label, entity, entity_id',
     [user.id, Number(trashId)],
   );
   if (!r[0]) throw new HttpError(404, 'Trash entry not found (already purged or expired).');
+  await recordAudit({
+    action: 'trash_purge', entity: r[0].entity || 'trash', entityId: r[0].entity_id ?? null,
+    label: r[0].label,
+    details: { trash_id: r[0].id },
+    actor: user,
+  });
   return { purged: true, id: r[0].id, label: r[0].label };
 }
 
 /** Remove every expired entry. Cheap enough to run on every trash list. */
-export async function sweepExpiredTrash() {
-  const r = await q("DELETE FROM trash WHERE purged_at IS NULL AND expires_at <= now()::text RETURNING id");
+export async function sweepExpiredTrash(user = null) {
+  const r = await q("DELETE FROM trash WHERE purged_at IS NULL AND expires_at <= now()::text RETURNING id, entity, entity_id, label");
+  if (r.length > 0) {
+    await recordAudit({
+      action: 'trash_sweep', entity: 'trash',
+      label: `${r.length} expired ${r.length === 1 ? 'entry' : 'entries'} auto-wiped`,
+      details: { swept: r.length, ids: r.map((x) => x.id) },
+      actor: user || { id: null, name: 'system' },
+    });
+  }
   return r.length;
 }

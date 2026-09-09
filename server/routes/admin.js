@@ -374,6 +374,27 @@ router.post('/bills/:id/purge', purge('purgeBill', (req) => ({ billId: req.param
 router.post('/shops/:id/purge', purge('purgeShop', (req) => ({ shopId: req.params.id })));
 router.post('/salesmen/:id/purge', purge('purgeSalesman', (req) => ({ salesmanId: req.params.id })));
 
+/* ------------------------------------------------------------ audit log ---
+ * Who deleted / restored / purged what, and when. Read-only here.
+ */
+router.get('/audit', async (req, res, next) => {
+  try {
+    const { listAudit, auditCount } = await import('../audit.js');
+    const [entries, total] = await Promise.all([
+      listAudit({
+        action: req.query.action || undefined,
+        entity: req.query.entity || undefined,
+        actorId: num(req.query.actorId),
+        from: req.query.from || undefined,
+        to: req.query.to || undefined,
+        limit: req.query.limit,
+      }),
+      auditCount(),
+    ]);
+    res.json({ entries, total });
+  } catch (err) { next(err); }
+});
+
 /* ------------------------------------------------------------- trash bin ---
  * Hard deletes land here as restorable snapshots for 30 days.
  */
@@ -382,7 +403,7 @@ router.post('/salesmen/:id/purge', purge('purgeSalesman', (req) => ({ salesmanId
 router.get('/trash', async (req, res, next) => {
   try {
     const { sweepExpiredTrash, listTrash } = await import('../trash.js');
-    const swept = await sweepExpiredTrash();
+    const swept = await sweepExpiredTrash(req.user);
     const entries = await listTrash();
     res.json({ entries, swept });
   } catch (err) { next(err); }
@@ -482,6 +503,13 @@ router.post('/factory-reset', async (req, res, next) => {
     await q(`DELETE FROM users WHERE role = 'salesman'`);
     // Reset sequences so IDs start from 1 again
     await q(`ALTER SEQUENCE users_id_seq RESTART WITH 1`);
+
+    const { recordAudit } = await import('../audit.js');
+    await recordAudit({
+      action: 'factory_reset', entity: 'system',
+      label: 'All ledger data wiped; admin accounts preserved',
+      actor: req.user,
+    });
 
     res.json({ ok: true, message: 'All data wiped. Admin accounts preserved.' });
   } catch (err) { next(err); }

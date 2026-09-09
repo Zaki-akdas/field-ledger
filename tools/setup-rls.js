@@ -121,7 +121,7 @@ const tables = [
   'users', 'sessions', 'shops', 'products',
   'bills', 'collections', 'cash_denominations',
   'short_items', 'cancellations', 'day_sessions',
-  'bill_edits', 'bank_matches', 'trash',
+  'bill_edits', 'bank_matches', 'trash', 'audit_log',
 ];
 
 for (const table of tables) {
@@ -429,6 +429,16 @@ await c.query(`
     FOR ALL USING (is_admin()) WITH CHECK (is_admin());
 `);
 console.log('✓ trash policies');
+
+// ── audit_log (append-only record of destructive/restorative actions) ──
+await c.query(`
+  -- Office business: only admins read the log. Nobody updates or deletes
+  -- rows — the log is append-only, written exclusively by the server's
+  -- recordAudit() under the owner connection.
+  CREATE POLICY "audit_log_admin_select" ON audit_log
+    FOR SELECT USING (is_admin());
+`);
+console.log('✓ audit_log policies');
 
 // ────────────────────────────────────────────────────────────
 // 5. Verify

@@ -146,6 +146,24 @@ CREATE TABLE IF NOT EXISTS trash (
 CREATE INDEX IF NOT EXISTS idx_trash_expires ON trash(expires_at);
 CREATE INDEX IF NOT EXISTS idx_trash_entity ON trash(entity, entity_id);
 
+-- Audit log: append-only record of who deleted / restored / purged what,
+-- and when (server/audit.js). Rows are never updated or deleted.
+CREATE TABLE IF NOT EXISTS audit_log (
+  id SERIAL PRIMARY KEY,
+  action TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  entity_id INTEGER,
+  label TEXT,
+  details JSONB,
+  actor_id INTEGER REFERENCES users(id),
+  actor_name TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity, entity_id);
+
 CREATE TABLE IF NOT EXISTS day_sessions (
   id SERIAL PRIMARY KEY,
   salesman_id INTEGER NOT NULL REFERENCES users(id),

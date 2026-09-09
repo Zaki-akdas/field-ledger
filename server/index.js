@@ -1,7 +1,16 @@
 import { pool } from './db.js';
 import app from './app.js';
 
-const PORT = Number(process.env.PORT || 4000);
+/**
+ * Port resolution. `.env` (loaded by --env-file) sets PORT=4000, but Node's
+ * --env-file never overrides variables that already exist in the environment
+ * — and some shells/sandboxes inject PORT=0, which made the API listen on an
+ * OS-assigned port and broke every script that expected :4000 (smoke, apitest,
+ * trash-e2e). So: ignore non-positive PORT values and fall back to .env or
+ * 4000. Real deployments that set a meaningful PORT are unaffected.
+ */
+const RAW_PORT = Number(process.env.PORT);
+const PORT = Number.isFinite(RAW_PORT) && RAW_PORT > 0 ? RAW_PORT : 4000;
 const isProduction = process.env.NODE_ENV === 'production';
 
 // ── Database check ─────────────────────────────────────────────────────

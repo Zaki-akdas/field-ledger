@@ -43,6 +43,7 @@ const EXPORT_BY_PATH = {
   '/admin/cancellations': 'cancellations',
   '/admin/shortages': 'shortages',
   '/admin/cash': 'cash-rollup',
+  '/admin/audit': 'audit',
 };
 
 export default function AdminLayout() {

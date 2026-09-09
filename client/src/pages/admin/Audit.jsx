@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useApi, useTitle } from '../../lib/hooks.js';
+import { useToast } from '../../lib/context.jsx';
+import { downloadExport } from '../../lib/api.js';
 import { dateLabel, timeLabel } from '../../lib/format.js';
 import {
-  Chips, EmptyState, ErrorNote, Loading, Pill, ResponsiveTable, col,
+  Btn, Chips, EmptyState, ErrorNote, Loading, Pill, ResponsiveTable, col, Spinner,
 } from '../../components/ui.jsx';
 
 const ACTION_LABEL = {
@@ -45,10 +47,24 @@ function detailLine(d) {
 
 export default function Audit() {
   useTitle('Audit log');
+  const { push } = useToast();
   const [action, setAction] = useState('all');
+  const [exporting, setExporting] = useState(null);
   const qs = action === 'all' ? '' : `?action=${action}`;
   const { data, loading, error } = useApi(`/admin/audit${qs}`);
   const entries = data?.entries || [];
+
+  const exportLog = async (format) => {
+    setExporting(format);
+    try {
+      await downloadExport('audit', action === 'all' ? {} : { action }, format);
+      push(`Audit log exported as ${format.toUpperCase()}.`, 'success');
+    } catch (err) {
+      push(err.message, 'error');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   return (
     <div>
@@ -57,6 +73,14 @@ export default function Audit() {
           Every delete, hard delete, restore, and wipe — <span className="num font-medium">{data?.total ?? '…'}</span> recorded.
           Append-only: entries can never be edited or removed.
         </p>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Btn size="sm" onClick={() => exportLog('xlsx')} disabled={!!exporting}>
+            {exporting === 'xlsx' ? <Spinner /> : null} Excel
+          </Btn>
+          <Btn size="sm" onClick={() => exportLog('pdf')} disabled={!!exporting}>
+            {exporting === 'pdf' ? <Spinner /> : null} PDF
+          </Btn>
+        </div>
       </div>
 
       <Chips

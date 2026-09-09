@@ -2,6 +2,7 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { q, reconcile, cashRollup, round2 } from './db.js';
 import { todayISO, isoDaysAgo } from './dates.js';
+import { listAudit } from './audit.js';
 
 const MONEY_FMT = '₹#,##,##0.00';
 
@@ -226,6 +227,30 @@ export async function buildWorkbook({ report, from, to, salesmanId }) {
     sheet.addRow([`Period: ${from} to ${to} · cancelled bills excluded`]);
   }
 
+  if (report === 'audit') {
+    const sheet = wb.addWorksheet('Audit Log');
+    sheet.addRow(['Timestamp (UTC)', 'Action', 'Entity', 'Entity ID', 'What', 'Details', 'By (name)', 'By (code)', 'Actor ID']);
+    // Exports want the whole book, not the API's 200-row page.
+    const rows = await listAudit({ limit: 100000, maxLimit: 100000 });
+    for (const e of rows) {
+      sheet.addRow([
+        e.created_at,
+        e.action,
+        e.entity,
+        e.entity_id ?? '',
+        e.label || '',
+        e.details ? JSON.stringify(e.details) : '',
+        e.actor_name,
+        e.actor_code || '',
+        e.actor_id ?? '',
+      ]);
+    }
+    styleHeader(sheet);
+    autosize(sheet, [21, 13, 11, 11, 40, 42, 20, 10, 9]);
+    sheet.addRow([]);
+    sheet.addRow([`Exported ${new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC · ${rows.length} ${rows.length === 1 ? 'entry' : 'entries'} · append-only record`]);
+  }
+
   const buffer = await wb.xlsx.writeBuffer();
   return { buffer, filename: `field-ledger-${report}-${from}_to_${to}.xlsx` };
 }
@@ -402,6 +427,32 @@ export async function buildPdf({ report, from, to, salesmanId }) {
     doc.moveDown(0.8);
     const gt = { cells: ['', 'Grand total', `${sno} ${sno === 1 ? 'bill' : 'bills'}`, rs(grandAmount), rs(grandCollected), rs(grandBalance)], bold: true };
     pdfTable(doc, ['S.No', 'Invoice', 'Party', 'Amount', 'Collected', 'Balance'], [gt], [38, 95, 138, 84, 84, 84]);
+  }
+
+  /* Audit log — one line per recorded action, newest first. */
+  if (report === 'audit') {
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#182233').text('Audit Log');
+    doc.font('Helvetica').fontSize(8.5).fillColor('#5A6B7B')
+      .text('Append-only record of deletes, hard deletes, restores and wipes · newest first');
+    doc.moveDown(0.5);
+    const rows = await listAudit({ limit: 100000, maxLimit: 100000 });
+    const ACTION_WORD = {
+      delete: 'Deleted', purge: 'Hard deleted', restore: 'Restored',
+      trash_purge: 'Erased from bin', trash_sweep: 'Auto-wiped', factory_reset: 'Factory reset',
+    };
+    const table = rows.map((e) => ({
+      cells: [
+        String(e.created_at).slice(0, 16),
+        ACTION_WORD[e.action] || e.action,
+        `${e.entity}${e.entity_id != null ? ` #${e.entity_id}` : ''}`,
+        (e.label || '').slice(0, 42),
+        `${e.actor_name}${e.actor_code ? ` (${e.actor_code})` : ''}`,
+      ],
+    }));
+    pdfTable(doc, ['When (UTC)', 'Action', 'Entity', 'What', 'By'], table, [86, 78, 76, 178, 104]);
+    doc.moveDown(0.8);
+    doc.font('Helvetica').fontSize(8.5).fillColor('#5A6B7B')
+      .text(`${rows.length} ${rows.length === 1 ? 'entry' : 'entries'} recorded.`);
   }
 
   const pageCount = doc.bufferedPageRange().count;

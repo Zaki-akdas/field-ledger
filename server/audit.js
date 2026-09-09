@@ -32,8 +32,9 @@ export async function recordAudit({ action, entity, entityId = null, label = nul
   }
 }
 
-/** Read the log, newest first, with optional filters. Admin-only by caller. */
-export async function listAudit({ action, entity, actorId, from, to, limit = 200 } = {}) {
+/** Read the log, newest first, with optional filters. Admin-only by caller.
+ * maxLimit raises the row cap for exports (office records want everything). */
+export async function listAudit({ action, entity, actorId, from, to, limit = 200, maxLimit = 500 } = {}) {
   const clauses = [];
   const params = [];
   const add = (sql, val) => {
@@ -45,8 +46,9 @@ export async function listAudit({ action, entity, actorId, from, to, limit = 200
   if (actorId) add('actor_id = ?', actorId);
   if (from) add('created_at >= ?', from);
   if (to) add('created_at <= ?', `${to}~`); // 'YYYY-MM-DD~' sorts after 'YYYY-MM-DDT…' timestamps
-  // Limit is capped server-side so a caller can't ask for the whole table.
-  const lim = Math.min(Math.max(Number(limit) || 200, 1), 500);
+  // Limit is capped server-side so a caller can't ask for the whole table
+  // (exports lift the cap with maxLimit).
+  const lim = Math.min(Math.max(Number(limit) || 200, 1), Math.max(Number(maxLimit) || 500, 1));
   params.push(lim);
 
   const rows = await q(

@@ -6,11 +6,19 @@ export const router = Router();
 router.use(requireAuth);
 
 const REPORTS = ['reconciliation', 'salesmen', 'bills', 'cancellations', 'shortages', 'cash-rollup', 'collection'];
+// Office-only reports — salesmen must never read these.
+const ADMIN_REPORTS = ['audit'];
 
 router.get('/:report', async (req, res, next) => {
   try {
     const report = String(req.params.report);
-    if (!REPORTS.includes(report)) return res.status(404).json({ error: `No export called "${report}".` });
+    if (ADMIN_REPORTS.includes(report)) {
+      if (req.user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only the office can export this report.' });
+      }
+    } else if (!REPORTS.includes(report)) {
+      return res.status(404).json({ error: `No export called "${report}".` });
+    }
 
     const { from, to } = range(req);
     const salesmanId = req.user.role === 'admin'

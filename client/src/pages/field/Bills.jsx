@@ -113,7 +113,7 @@ export default function Bills({ mode = 'all' }) {
       </div>
 
       <Chips
-        className="mb-3 -mx-4 px-4"
+        className="mb-3"
         value={status}
         onChange={setStatus}
         options={[

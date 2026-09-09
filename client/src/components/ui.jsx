@@ -328,7 +328,10 @@ export function Segmented({ options, value, onChange, className = '' }) {
 
 export function Chips({ options, value, onChange, className = '' }) {
   return (
-    <div className={cx('flex gap-1.5 overflow-x-auto no-scrollbar snap-x-scroll contain-scroll', className)}>
+    // min-w-0 lets this shrink inside padded/grid parents — without it the
+    // row's content width (one card per chip, never wrapping) forces the
+    // document wider on 320px screens.
+    <div className={cx('flex min-w-0 gap-1.5 overflow-x-auto no-scrollbar snap-x-scroll contain-scroll', className)}>
       {options.map((o) => (
         <button
           key={o.value}

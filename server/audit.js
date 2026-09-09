@@ -41,11 +41,11 @@ export async function listAudit({ action, entity, actorId, from, to, limit = 200
     params.push(val);
     clauses.push(sql.replace('?', `$${params.length}`));
   };
-  if (action) add('action = ?', action);
-  if (entity) add('entity = ?', entity);
-  if (actorId) add('actor_id = ?', actorId);
-  if (from) add('created_at >= ?', from);
-  if (to) add('created_at <= ?', `${to}~`); // 'YYYY-MM-DD~' sorts after 'YYYY-MM-DDT…' timestamps
+  if (action) add('a.action = ?', action);
+  if (entity) add('a.entity = ?', entity);
+  if (actorId) add('a.actor_id = ?', actorId);
+  if (from) add('a.created_at >= ?', from);
+  if (to) add('a.created_at <= ?', `${to}~`); // 'YYYY-MM-DD~' sorts after 'YYYY-MM-DDT…' timestamps
   // Limit is capped server-side so a caller can't ask for the whole table
   // (exports lift the cap with maxLimit).
   const lim = Math.min(Math.max(Number(limit) || 200, 1), Math.max(Number(maxLimit) || 500, 1));

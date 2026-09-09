@@ -385,9 +385,11 @@ export default function Collect() {
 
       <ErrorNote className="mt-4">{error}</ErrorNote>
 
-      {/* Sticky total + the one action that matters */}
-      <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom)+0.5rem)] z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
-        <div className="mx-auto max-w-[560px] px-4 py-3">
+      {/* Sticky total + the one action that matters. Sits just above the
+          bottom nav — whose height grows at lg (larger tab padding), so the
+          offset follows it there. */}
+      <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-30 border-t border-line bg-surface/95 backdrop-blur lg:bottom-[calc(78px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-[560px] px-4 py-3 lg:max-w-[760px]">
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[12.5px] text-ink-soft">Collecting</span>
             <span className="flex items-baseline gap-2">

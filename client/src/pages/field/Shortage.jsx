@@ -148,8 +148,8 @@ export default function Shortage() {
 
       <ErrorNote className="mt-4">{error}</ErrorNote>
 
-      <div className="fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom)+0.5rem)] z-30 border-t border-line bg-surface/95 backdrop-blur safe-bottom">
-        <div className="mx-auto max-w-[560px] px-4 py-3">
+      <div className="fixed inset-x-0 bottom-[calc(64px+env(safe-area-inset-bottom))] z-30 border-t border-line bg-surface/95 backdrop-blur lg:bottom-[calc(78px+env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-[560px] px-4 py-3 lg:max-w-[760px]">
           <div className="mb-2 flex items-baseline justify-between">
             <span className="text-[12.5px] text-ink-soft">Total shortage</span>
             <span className={cx('num text-[20px] font-medium', total > 0 && 'text-attention')}>₹{money2(total)}</span>

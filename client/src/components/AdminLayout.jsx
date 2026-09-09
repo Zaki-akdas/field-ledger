@@ -260,19 +260,19 @@ export default function AdminLayout() {
                   </button>
                 ))}
                 <span className="px-0.5 text-[12px] text-ink-faint">or</span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-1 flex-wrap items-center gap-1.5 min-[480px]:flex-none">
                   <input
                     type="date"
                     value={from}
                     onChange={(e) => setRange({ from: e.target.value })}
-                    className="num h-[38px] rounded-md border border-line bg-surface px-2.5 text-[12.5px] touch-target"
+                    className="num h-[38px] w-full min-[480px]:w-[130px] rounded-md border border-line bg-surface px-2.5 text-[12.5px] touch-target"
                     aria-label="From date"
                   />
                   <input
                     type="date"
                     value={to}
                     onChange={(e) => setRange({ to: e.target.value })}
-                    className="num h-[38px] rounded-md border border-line bg-surface px-2.5 text-[12.5px] touch-target"
+                    className="num h-[38px] w-full min-[480px]:w-[130px] rounded-md border border-line bg-surface px-2.5 text-[12.5px] touch-target"
                     aria-label="To date"
                   />
                 </div>

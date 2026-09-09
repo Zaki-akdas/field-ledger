@@ -128,9 +128,9 @@ export default function Audit() {
         </button>
         {range.enabled && (
           <>
-            <Input type="date" value={range.from} onChange={(e) => { setRangePart('from')(e); setPage(1); }} className="h-10 w-[150px] min-h-[38px]" aria-label="From date" />
+            <Input type="date" value={range.from} onChange={(e) => { setRangePart('from')(e); setPage(1); }} className="h-10 w-full min-[420px]:w-[150px] min-h-[38px]" aria-label="From date" />
             <span className="text-[12px] text-ink-faint">→</span>
-            <Input type="date" value={range.to} onChange={(e) => { setRangePart('to')(e); setPage(1); }} className="h-10 w-[150px] min-h-[38px]" aria-label="To date" />
+            <Input type="date" value={range.to} onChange={(e) => { setRangePart('to')(e); setPage(1); }} className="h-10 w-full min-[420px]:w-[150px] min-h-[38px]" aria-label="To date" />
             <span className="text-[12px] text-ink-faint">
               {range.from > range.to ? <span className="text-attention">From is after to</span> : 'filtering the list and both exports'}
             </span>

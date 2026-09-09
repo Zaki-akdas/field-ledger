@@ -66,7 +66,7 @@ export default function FieldLayout() {
     <div className="min-h-full">
       {/* Running total — always visible, the number a salesman checks first. */}
       <header className="sticky top-0 z-30 border-b border-line bg-paper/95 backdrop-blur safe-top">
-        <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+        <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-3 py-2.5 sm:px-4 lg:max-w-[760px]">
           <NavLink
             to="/field/me"
             state={originTab ? { back: originTab } : undefined}
@@ -174,10 +174,14 @@ export default function FieldLayout() {
         </div>
       )}
 
-      <main key={location.pathname} className="anim-rise mx-auto max-w-[560px] px-3 pb-28 pt-3 sm:px-4 sm:pt-4">
+      <main key={location.pathname} className="anim-rise mx-auto max-w-[560px] px-3 pb-28 pt-3 sm:px-4 sm:pt-4 lg:max-w-[760px]">
         <Outlet context={{ pendingCount, summary: data, reloadSummary: reload }} />
-      </main>      <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-line bg-paper/95 backdrop-blur safe-bottom lg:pb-2 lg:pt-1">
-        <div className="mx-auto flex max-w-[560px] items-center justify-around px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2">
+      </main>
+      {/* Bottom nav — fixed on every screen. Safe-area inset is handled once
+          here (inner padding); pages offset their sticky bars by this nav's
+          height (64px mobile, 76px lg) plus the same inset. */}
+      <nav className="fixed bottom-0 inset-x-0 z-30 border-t border-line bg-paper/95 backdrop-blur">
+        <div className="mx-auto flex max-w-[560px] items-center justify-around px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 lg:max-w-[760px] lg:pb-[calc(env(safe-area-inset-bottom)+1rem)] lg:pt-2.5">
           {NAV.map((item) => (
             <NavLink
               key={item.to}

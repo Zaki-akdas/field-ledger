@@ -86,7 +86,7 @@ export default function Upload() {
   };
 
   return (
-    <div className="pb-28">
+    <div>
       <FieldHeader title="Add bills" back="/field/bills" />
 
       <Segmented

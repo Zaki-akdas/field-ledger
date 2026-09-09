@@ -81,7 +81,7 @@ export default function Me() {
   const step = ended ? 5 : started ? (closed > 0 ? 3 : 2) : 1;
 
   return (
-    <div className="pb-28">
+    <div>
       {backLabel && backTo && (
         <Link
           to={backTo}
@@ -137,7 +137,7 @@ export default function Me() {
           {/* Overall billed / collected / outstanding for the range — the same
               summary card shown above the bills list, so “My numbers” reads like
               the printed CO-SHIP collection report. */}
-          <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-2.5" aria-label={`${rangeLabel} summary`}>
+          <div className="mt-4 grid grid-cols-2 gap-2 min-[380px]:grid-cols-3 sm:gap-2.5" aria-label={`${rangeLabel} summary`}>
             <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">
                 {days === '0' ? "Today's billed" : 'Billed'}

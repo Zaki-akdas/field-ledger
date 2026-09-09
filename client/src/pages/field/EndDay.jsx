@@ -188,7 +188,7 @@ export default function EndDay() {
   );
 
   return (
-    <div className="pb-28">
+    <div>
       <FieldHeader title={`End day · from ${backLabel(back) || 'My numbers'}`} back={back ?? '/field/me'} backState={back ? { back } : undefined} />
 
       {ended ? (

@@ -125,7 +125,7 @@ export default function Bills({ mode = 'all' }) {
       />
 
       {!collectOnly && !loading && (data?.bills || []).length > 0 && (
-        <div className="mb-3 grid grid-cols-3 gap-2 sm:gap-2.5" aria-label={`${scope === 'today' ? "Today's" : 'Overall'} summary`}>
+        <div className="mb-3 grid grid-cols-2 gap-2 min-[380px]:grid-cols-3 sm:gap-2.5" aria-label={`${scope === 'today' ? "Today's" : 'Overall'} summary`}>
           <div className="rounded-xl border border-line bg-surface px-3 py-2.5 sm:px-3.5 sm:py-3">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint sm:text-[10.5px]">
               {scope === 'today' ? "Today's" : 'Overall'} billed

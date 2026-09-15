@@ -10,9 +10,19 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK (role IN ('salesman','admin')),
   phone TEXT,
   password_hash TEXT NOT NULL,
+  -- Forced rotation: provisioned accounts start flagged; the flag clears only
+  -- through POST /api/auth/password. Login still works, but the API refuses
+  -- every other route until the password is changed (see requireAuth).
+  must_change_password INTEGER NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text
 );
+
+-- Pre-existing databases created before forced rotation existed: seed-provisioned
+-- accounts (admin/ops/SLM-*) may still carry their well-known passwords, so
+-- flag them once here. Accounts created later start at 0 (self-signup mints
+-- its own password). Re-running is a no-op.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS sessions (
   token TEXT PRIMARY KEY,
@@ -175,6 +185,28 @@ CREATE TABLE IF NOT EXISTS day_sessions (
   UNIQUE (salesman_id, work_date)
 );
 
+-- Error reports: client-side crashes (ErrorBoundary, window.onerror) and
+-- server-side faults (uncaughtException, unhandledRejection, 500s) land here
+-- so production failures are captured without an external service. Append-only;
+-- pruning happens lazily on insert (see server/errors.js).
+CREATE TABLE IF NOT EXISTS error_reports (
+  id SERIAL PRIMARY KEY,
+  source TEXT NOT NULL CHECK (source IN ('client', 'server')),
+  kind TEXT NOT NULL,
+  message TEXT NOT NULL,
+  stack TEXT,
+  component_stack TEXT,
+  url TEXT,
+  user_agent TEXT,
+  user_id INTEGER REFERENCES users(id),
+  user_code TEXT,
+  context JSONB,
+  created_at TEXT NOT NULL DEFAULT (now() AT TIME ZONE 'utc')::text
+);
+
+CREATE INDEX IF NOT EXISTS idx_error_reports_created ON error_reports(created_at);
+CREATE INDEX IF NOT EXISTS idx_error_reports_source ON error_reports(source, kind);
+
 CREATE INDEX IF NOT EXISTS idx_bills_date ON bills(bill_date);
 CREATE INDEX IF NOT EXISTS idx_bills_salesman ON bills(salesman_id);
 CREATE INDEX IF NOT EXISTS idx_col_bill ON collections(bill_id);
@@ -188,21 +220,26 @@ CREATE INDEX IF NOT EXISTS idx_col_salesman ON collections(salesman_id);
 -- exactly the columns the app needs. EXECUTE is revoked from PUBLIC and
 -- granted to the platform 'authenticated' role; custom roles need their own
 -- GRANT (see README). Kept in sync with tools/setup-rls.js.
+-- Return types widened for must_change_password: DROP first because Postgres
+-- refuses CREATE OR REPLACE that changes a function's return type (existing
+-- databases keep working — the app's legacy fallback covers a missing fn).
+DROP FUNCTION IF EXISTS app_find_user_by_code(text);
+DROP FUNCTION IF EXISTS app_session_user(text);
 CREATE OR REPLACE FUNCTION app_find_user_by_code(p_code text)
-RETURNS TABLE (id integer, code text, name text, role text, phone text, password_hash text)
+RETURNS TABLE (id integer, code text, name text, role text, phone text, password_hash text, must_change_password integer)
 LANGUAGE sql SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT id, code, name, role, phone, password_hash
+  SELECT id, code, name, role, phone, password_hash, must_change_password
   FROM users
   WHERE lower(code) = lower(p_code) AND active = 1
   LIMIT 1;
 $$;
 
 CREATE OR REPLACE FUNCTION app_session_user(p_token text)
-RETURNS TABLE (id integer, code text, name text, role text, phone text)
+RETURNS TABLE (id integer, code text, name text, role text, phone text, must_change_password integer)
 LANGUAGE sql SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT u.id, u.code, u.name, u.role, u.phone
+  SELECT u.id, u.code, u.name, u.role, u.phone, u.must_change_password
   FROM sessions s JOIN users u ON u.id = s.user_id
   WHERE s.token = p_token AND u.active = 1
   LIMIT 1;

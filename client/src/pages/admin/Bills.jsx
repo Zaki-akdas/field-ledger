@@ -5,7 +5,7 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money, dateLabel, STATUS_LABEL } from '../../lib/format.js';
 import {
-  Btn, Chips, ErrorNote, Input, Loading, Money, Pill, PurgeSheet, ResponsiveTable, col,
+  Btn, Chips, DeleteSheet, ErrorNote, Input, Loading, Money, Pill, PurgeSheet, ResponsiveTable, col,
 } from '../../components/ui.jsx';
 import BillEditSheet from '../../components/BillEditSheet.jsx';
 
@@ -32,6 +32,8 @@ export default function Bills() {
   const [busy, setBusy] = useState(false);
   const [purging, setPurging] = useState(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
+  const [deleting, setDeleting] = useState(null);      // single soft delete
+  const [bulkDeleting, setBulkDeleting] = useState(false); // bulk soft delete
   const { push } = useToast();
   const { data, loading, error, reload } = useApi(`/admin/bills?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
   const people = useApi('/salesmen');
@@ -85,13 +87,12 @@ export default function Bills() {
   };
 
   /* ---- single delete ---- */
-  const handleDelete = async (bill, e) => {
-    e.stopPropagation();
-    if (!window.confirm(`Delete bill ${bill.invoice_no}? This cannot be undone.`)) return;
+  const handleDelete = async (reason) => {
     setBusy(true);
     try {
-      await api.del(`/admin/bills/${bill.id}`);
-      push(`Deleted ${bill.invoice_no}.`, 'success');
+      await api.del(`/admin/bills/${deleting.id}`, { body: { reason } });
+      push(`Deleted ${deleting.invoice_no}.`, 'success');
+      setDeleting(null);
       reload();
     } catch (err) {
       push(err.message, 'error');
@@ -101,10 +102,10 @@ export default function Bills() {
   };
 
   /* ---- single hard delete ---- */
-  const handlePurge = async (password) => {
+  const handlePurge = async (password, reason) => {
     setPurgeBusy(true);
     try {
-      await api.post(`/admin/bills/${purging.id}/purge`, { password });
+      await api.post(`/admin/bills/${purging.id}/purge`, { password, reason });
       push(`Hard-deleted ${purging.invoice_no}. Restorable from Trash for 30 days.`, 'success');
       setPurging(null);
       reload();
@@ -117,12 +118,10 @@ export default function Bills() {
   };
 
   /* ---- bulk delete ---- */
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} bill${selected.size > 1 ? 's' : ''}? Bills with collections will be skipped.`)) return;
+  const handleBulkDelete = async (reason) => {
     setBusy(true);
     try {
-      const r = await api.post('/admin/bills/delete', { ids: [...selected] });
+      const r = await api.post('/admin/bills/delete', { ids: [...selected], reason });
       const n = r.deleted?.length || 0;
       const skip = r.skipped?.length || 0;
       push(n ? `Deleted ${n} bill${n > 1 ? 's' : ''}${skip ? `, skipped ${skip}` : ''}.` : 'Nothing was deleted.', n ? 'success' : 'error');
@@ -150,7 +149,7 @@ export default function Bills() {
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm dark:bg-red-950/30">
           <span className="font-medium text-red-700 dark:text-red-300">{selected.size} selected</span>
-          <Btn size="sm" variant="danger" onClick={handleBulkDelete} disabled={busy}>Delete selected</Btn>
+          <Btn size="sm" variant="danger" onClick={() => { if (selected.size) setBulkDeleting(true); }} disabled={busy}>Delete selected</Btn>
           <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Btn>
         </div>
       )}
@@ -211,6 +210,17 @@ export default function Bills() {
       )}
 
       <BillEditSheet bill={editing} onClose={() => setEditing(null)} onSaved={onEdited} />
+
+      <DeleteSheet
+        open={!!deleting || bulkDeleting}
+        onClose={() => { setDeleting(null); setBulkDeleting(false); }}
+        title={deleting ? `Delete ${deleting.invoice_no}?` : `Delete ${selected.size} bill${selected.size > 1 ? 's' : ''}?`}
+        description={deleting
+          ? 'The bill is removed from the ledger. Shops with no other bills are removed with it.'
+          : 'Bills with collections or shortage records will be skipped.'}
+        onConfirm={deleting ? handleDelete : handleBulkDelete}
+        busy={busy}
+      />
 
       <PurgeSheet
         open={!!purging}

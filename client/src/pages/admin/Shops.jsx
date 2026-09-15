@@ -4,7 +4,7 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money } from '../../lib/format.js';
 import {
-  Btn, ErrorNote, Input, Loading, Money, PurgeSheet, ResponsiveTable, col,
+  Btn, DeleteSheet, ErrorNote, Input, Loading, Money, PurgeSheet, ResponsiveTable, col,
 } from '../../components/ui.jsx';
 
 export default function Shops() {
@@ -14,6 +14,8 @@ export default function Shops() {
   const [busy, setBusy] = useState(false);
   const [purging, setPurging] = useState(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
+  const [deleting, setDeleting] = useState(null);      // single soft delete
+  const [bulkDeleting, setBulkDeleting] = useState(false); // bulk soft delete
   const { push } = useToast();
   const { data, loading, error, reload } = useApi('/admin/shops');
 
@@ -45,13 +47,12 @@ export default function Shops() {
   };
 
   /* ---- single delete ---- */
-  const handleDelete = async (s, e) => {
-    e.stopPropagation();
-    if (!window.confirm(`Delete shop "${s.name}"? This cannot be undone.`)) return;
+  const handleDelete = async (reason) => {
     setBusy(true);
     try {
-      await api.del(`/admin/shops/${s.id}`);
-      push(`Deleted ${s.name}.`, 'success');
+      await api.del(`/admin/shops/${deleting.id}`, { body: { reason } });
+      push(`Deleted ${deleting.name}.`, 'success');
+      setDeleting(null);
       reload();
     } catch (err) {
       push(err.message, 'error');
@@ -61,10 +62,10 @@ export default function Shops() {
   };
 
   /* ---- single hard delete ---- */
-  const handlePurge = async (password) => {
+  const handlePurge = async (password, reason) => {
     setPurgeBusy(true);
     try {
-      const r = await api.post(`/admin/shops/${purging.id}/purge`, { password });
+      const r = await api.post(`/admin/shops/${purging.id}/purge`, { password, reason });
       push(`Hard-deleted ${purging.name}${r.bills_removed ? ` and its ${r.bills_removed} bill${r.bills_removed > 1 ? 's' : ''}` : ''}. Restorable from Trash for 30 days.`, 'success');
       setPurging(null);
       reload();
@@ -77,12 +78,10 @@ export default function Shops() {
   };
 
   /* ---- bulk delete ---- */
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} shop${selected.size > 1 ? 's' : ''}? Shops with bills will be skipped.`)) return;
+  const handleBulkDelete = async (reason) => {
     setBusy(true);
     try {
-      const r = await api.post('/admin/shops/delete', { ids: [...selected] });
+      const r = await api.post('/admin/shops/delete', { ids: [...selected], reason });
       const n = r.deleted?.length || 0;
       const skip = r.skipped?.length || 0;
       push(n ? `Deleted ${n} shop${n > 1 ? 's' : ''}${skip ? `, skipped ${skip}` : ''}.` : 'Nothing was deleted.', n ? 'success' : 'error');
@@ -110,7 +109,7 @@ export default function Shops() {
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm dark:bg-red-950/30">
           <span className="font-medium text-red-700 dark:text-red-300">{selected.size} selected</span>
-          <Btn size="sm" variant="danger" onClick={handleBulkDelete} disabled={busy}>Delete selected</Btn>
+          <Btn size="sm" variant="danger" onClick={() => { if (selected.size) setBulkDeleting(true); }} disabled={busy}>Delete selected</Btn>
           <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Btn>
         </div>
       )}
@@ -149,7 +148,7 @@ export default function Shops() {
                 variant="ghost"
                 className="text-red-500 hover:text-red-700"
                 aria-label={`Delete ${s.name}`}
-                onClick={(e) => { e.stopPropagation(); handleDelete(s, e); }}
+                onClick={(e) => { e.stopPropagation(); setDeleting(s); }}
                 disabled={busy}
               >
                 Delete
@@ -169,6 +168,17 @@ export default function Shops() {
         ]}
         rows={shops}
         empty={<p className="py-10 text-center text-ink-faint">No shops match these filters.</p>}
+      />
+
+      <DeleteSheet
+        open={!!deleting || bulkDeleting}
+        onClose={() => { setDeleting(null); setBulkDeleting(false); }}
+        title={deleting ? `Delete ${deleting.name}?` : `Delete ${selected.size} shop${selected.size > 1 ? 's' : ''}?`}
+        description={deleting
+          ? 'The shop is removed from the ledger. This cannot be undone from the app.'
+          : 'Shops with bills will be skipped.'}
+        onConfirm={deleting ? handleDelete : handleBulkDelete}
+        busy={busy}
       />
 
       <PurgeSheet

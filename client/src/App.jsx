@@ -3,6 +3,7 @@ import { AuthProvider, SyncProvider, ToastProvider, useAuth } from './lib/contex
 import { Loading } from './components/ui.jsx';
 
 import Login from './pages/Login.jsx';
+import RotatePassword from './pages/RotatePassword.jsx';
 import FieldLayout from './components/FieldLayout.jsx';
 import AdminLayout from './components/AdminLayout.jsx';
 
@@ -29,12 +30,17 @@ import AdminUpload from './pages/admin/Upload.jsx';
 import Shops from './pages/admin/Shops.jsx';
 import Trash from './pages/admin/Trash.jsx';
 import Audit from './pages/admin/Audit.jsx';
+import Errors from './pages/admin/Errors.jsx';
+import System from './pages/admin/System.jsx';
 
 function Guard({ children, role }) {
   const { user, loading } = useAuth();
   const location = useLocation();
   if (loading) return <Loading label="Opening your book…" />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // Forced rotation: a provisioned account must set its own password before
+  // anything else in the app opens (the API enforces the same rule).
+  if (user.must_change_password) return <Navigate to="/rotate-password" replace />;
   if (role && user.role !== role) {
     return <Navigate to={user.role === 'admin' ? '/admin' : '/field/bills'} replace />;
   }
@@ -49,12 +55,30 @@ function Home() {
 }
 
 function NotFound() {
+  const { user } = useAuth();
   return (
     <div className="mx-auto max-w-md px-6 py-24 text-center">
       <p className="num text-[42px] font-medium text-line-strong">404</p>
       <h1 className="mt-2 text-[20px] font-semibold">That page isn’t in the book</h1>
       <p className="mt-1 text-[14px] text-ink-soft">Check the address, or head back to your dashboard.</p>
       <a href="/" className="mt-5 inline-block rounded-lg bg-ink px-4 py-2.5 text-[14px] font-medium text-paper">Go home</a>
+
+      {/* Minimal footer — present on every screen so the app doesn't feel naked.
+          Replace the placeholder links behind real routes/docs when they exist. */}
+      {user && (
+        <footer className="mt-14 border-t border-line pt-5 text-[11.5px] text-ink-faint">
+          <div className="flex flex-col gap-2 text-center">
+            <p className="text-[11px] uppercase tracking-wider text-ink-faint">Field Ledger</p>
+            <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1" aria-label="Footer">
+              {/* Uncomment real links here when the pages exist: */}
+              {/* <a href="/privacy" className="underline underline-offset-2 hover:text-ink">Privacy</a>
+              <a href="/terms" className="underline underline-offset-2 hover:text-ink">Terms</a>
+              <a href="/support" className="underline underline-offset-2 hover:text-ink">Support</a> */}
+              <span className="text-ink-faint/60">© 2026 Field Ledger</span>
+            </nav>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }
@@ -66,6 +90,7 @@ export default function App() {
         <SyncProvider>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/rotate-password" element={<RotatePassword />} />
             <Route path="/" element={<Home />} />
 
             <Route path="/field" element={<Guard role="salesman"><FieldLayout /></Guard>}>
@@ -100,6 +125,8 @@ export default function App() {
               <Route path="bank" element={<BankRecon />} />
               <Route path="trash" element={<Trash />} />
               <Route path="audit" element={<Audit />} />
+              <Route path="errors" element={<Errors />} />
+              <Route path="system" element={<System />} />
             </Route>
 
             <Route path="*" element={<NotFound />} />

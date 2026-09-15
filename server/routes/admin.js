@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import path from 'node:path';
 import { reconcile, cashRollup, round2, q1, q } from '../db.js';
 import { requireAuth, requireRole, verifyPassword } from '../auth.js';
 import { todayISO, isoDaysAgo } from '../dates.js';
@@ -267,28 +268,28 @@ router.get('/bills', async (req, res, next) => {
 router.delete('/bills/:id', async (req, res, next) => {
   try {
     const { deleteBill } = await import('../mutations.js');
-    res.json(await deleteBill({ billId: req.params.id, user: req.user }));
+    res.json(await deleteBill({ billId: req.params.id, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
 router.post('/bills/delete', async (req, res, next) => {
   try {
     const { deleteBills } = await import('../mutations.js');
-    res.json(await deleteBills({ ids: req.body.ids, user: req.user }));
+    res.json(await deleteBills({ ids: req.body.ids, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
 router.delete('/salesmen/:id', async (req, res, next) => {
   try {
     const { deleteSalesman } = await import('../mutations.js');
-    res.json(await deleteSalesman({ salesmanId: req.params.id, user: req.user }));
+    res.json(await deleteSalesman({ salesmanId: req.params.id, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
 router.post('/salesmen/delete', async (req, res, next) => {
   try {
     const { deleteSalesmen } = await import('../mutations.js');
-    res.json(await deleteSalesmen({ ids: req.body.ids, user: req.user }));
+    res.json(await deleteSalesmen({ ids: req.body.ids, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
@@ -347,14 +348,14 @@ router.get('/bills/pending-summary', async (req, res, next) => {
 router.delete('/shops/:id', async (req, res, next) => {
   try {
     const { deleteShop } = await import('../mutations.js');
-    res.json(await deleteShop({ shopId: req.params.id, user: req.user }));
+    res.json(await deleteShop({ shopId: req.params.id, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
 router.post('/shops/delete', async (req, res, next) => {
   try {
     const { deleteShops } = await import('../mutations.js');
-    res.json(await deleteShops({ ids: req.body.ids, user: req.user }));
+    res.json(await deleteShops({ ids: req.body.ids, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
@@ -366,7 +367,7 @@ router.post('/shops/delete', async (req, res, next) => {
 const purge = (fn, pick) => async (req, res, next) => {
   try {
     const mod = await import('../mutations.js');
-    res.json(await mod[fn]({ ...pick(req), user: req.user, password: req.body?.password }));
+    res.json(await mod[fn]({ ...pick(req), user: req.user, password: req.body?.password, reason: req.body?.reason }));
   } catch (err) { next(err); }
 };
 
@@ -404,6 +405,115 @@ router.get('/audit', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+/* ---------------------------------------------------------------- errors ---
+ * The error sink's read side (server/errors.js writes, server/errorsQuery.js
+ * lists): client crashes and server faults, filterable so a bad day can be
+ * reviewed without SQL.
+ */
+router.get('/errors', async (req, res, next) => {
+  try {
+    const { listErrors, errorFacets } = await import('../errorsQuery.js');
+    const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 500);
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const offset = req.query.offset != null ? Number(req.query.offset) : (page - 1) * limit;
+    const [{ rows, total }, facets] = await Promise.all([
+      listErrors({
+        source: req.query.source || undefined,
+        kind: req.query.kind || undefined,
+        userId: num(req.query.userId),
+        search: (req.query.search || '').trim() || undefined,
+        from: req.query.from || undefined,
+        to: req.query.to || undefined,
+        limit,
+        offset,
+      }),
+      errorFacets(),
+    ]);
+    res.json({
+      entries: rows,
+      total,
+      page: Math.floor(offset / limit) + 1,
+      limit,
+      pages: Math.max(Math.ceil(total / limit), 1),
+      facets,
+    });
+  } catch (err) { next(err); }
+});
+
+/** Unread-error badge: count of reports newer than the admin's last-seen id. */
+router.get('/errors/unread', async (req, res, next) => {
+  try {
+    const { unreadErrorsCount, latestErrorId } = await import('../errorsQuery.js');
+    const after = req.query.after != null ? Number(req.query.after) : null;
+    // No marker yet (first visit ever): report zero and hand back the current
+    // max id, so the badge only lights for reports arriving *after* now.
+    const afterId = Number.isFinite(after) && after >= 0 ? Math.floor(after) : null;
+    const count = afterId == null ? 0 : await unreadErrorsCount(afterId);
+    res.json({ count, latestId: await latestErrorId() });
+  } catch (err) { next(err); }
+});
+
+/* ------------------------------------------------------------ system/backups */
+
+/**
+ * Stored scheduled backups (tools/backup.mjs's zips), newest first — the
+ * System page's backup list. Path-only listing: no file bytes leave storage
+ * here, the download route fetches one explicitly.
+ */
+router.get('/backups', async (req, res, next) => {
+  try {
+    const { listBackups } = await import('../storage.js');
+    res.json({ backups: await listBackups(30) });
+  } catch (err) { next(err); }
+});
+
+/**
+ * Download one stored backup by exact name (basename-checked, so no path
+ * traversal). Storage mode streams the object; disk mode streams the file.
+ */
+router.get('/backups/download', async (req, res, next) => {
+  try {
+    const name = path.basename(String(req.query.name || ''));
+    if (!name.endsWith('.zip') || name.includes('..')) {
+      return res.status(400).json({ error: 'Bad backup name.' });
+    }
+    const { readBackupFile } = await import('../storage.js');
+    const file = await readBackupFile(name);
+    if (!file) return res.status(404).json({ error: 'That backup no longer exists (pruned by retention?).' });
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+    res.send(file);
+  } catch (err) { next(err); }
+});
+
+/** CSV export of the error log with the same filters as the page. */
+router.get('/errors.csv', async (req, res, next) => {
+  try {
+    const { listErrors } = await import('../errorsQuery.js');
+    const { rows } = await listErrors({
+      source: req.query.source || undefined,
+      kind: req.query.kind || undefined,
+      userId: num(req.query.userId),
+      search: (req.query.search || '').trim() || undefined,
+      from: req.query.from || undefined,
+      to: req.query.to || undefined,
+      limit: 100000,
+      maxLimit: 100000,
+    });
+    const esc = (v) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = ['Timestamp (UTC),Source,Kind,Message,URL,User code,User name,Stack'];
+    for (const e of rows) {
+      lines.push([e.created_at, e.source, e.kind, e.message, e.url || '', e.user_code || '', e.user_name || '', e.stack || ''].map(esc).join(','));
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="field-ledger-errors.csv"`);
+    res.send(`\ufeff${lines.join('\r\n')}`);
+  } catch (err) { next(err); }
+});
+
 /* ------------------------------------------------------------- trash bin ---
  * Hard deletes land here as restorable snapshots for 30 days.
  */
@@ -430,7 +540,7 @@ router.post('/trash/:id/restore', async (req, res, next) => {
 router.post('/trash/:id/purge', async (req, res, next) => {
   try {
     const { purgeTrash } = await import('../trash.js');
-    res.json(await purgeTrash({ trashId: req.params.id, user: req.user }));
+    res.json(await purgeTrash({ trashId: req.params.id, user: req.user, reason: req.body?.reason }));
   } catch (err) { next(err); }
 });
 
@@ -479,7 +589,7 @@ router.post('/factory-reset', async (req, res, next) => {
   try {
     // Require the magic word AND the admin's password — a stolen session
     // alone must not be enough to wipe the entire database.
-    const { confirm, password } = req.body || {};
+    const { confirm, password, reason } = req.body || {};
     if (confirm !== 'DELETE') {
       return res.status(400).json({ error: 'Type DELETE to confirm factory reset.' });
     }
@@ -517,6 +627,7 @@ router.post('/factory-reset', async (req, res, next) => {
     await recordAudit({
       action: 'factory_reset', entity: 'system',
       label: 'All ledger data wiped; admin accounts preserved',
+      details: { reason: String(reason || '').trim().slice(0, 300) || '(not given)', confirm_word: confirm },
       actor: req.user,
     });
 

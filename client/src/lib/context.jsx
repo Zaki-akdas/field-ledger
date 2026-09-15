@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, getToken, setToken, ApiError, ping } from './api.js';
 import * as outbox from './outbox.js';
+import { readResults, clearResults } from './mirror.js';
 
 const AuthContext = createContext(null);
 const ToastContext = createContext(null);
@@ -27,7 +28,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (code, password) => {
     const data = await api.post('/auth/login', { code, password });
     setToken(data.token);
-    setUser(data.user);
+    setUser({ ...data.user, must_change_password: data.must_change_password });
     return data.user;
   }, []);
 
@@ -46,13 +47,24 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Step-up authentication before a sensitive action (purge, factory reset):
+  // the server verifies the password NOW and mints a fresh session, so the
+  // destructive call goes out under a just-verified identity. The old token
+  // is replaced; other tabs keep theirs until natural expiry.
+  const reauth = useCallback(async (password) => {
+    const data = await api.post('/auth/reauth', { password });
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  }, []);
+
   useEffect(() => {
     const onUnauthorized = () => setUser(null);
     window.addEventListener('field-ledger:unauthorized', onUnauthorized);
     return () => window.removeEventListener('field-ledger:unauthorized', onUnauthorized);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, register, logout, setUser }), [user, loading, login, register, logout]);
+  const value = useMemo(() => ({ user, loading, login, register, logout, reauth, setUser }), [user, loading, login, register, logout, reauth]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -111,6 +123,8 @@ export function SyncProvider({ children }) {
   const [queue, setQueue] = useState(() => outbox.list());
   const [flushing, setFlushing] = useState(false);
   const [lastResult, setLastResult] = useState(null);
+  // When a flush last finished OK — drives the banner's brief "synced" state.
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const flushingRef = useRef(false);
   const toast = useRef(null);
   const { push } = useContext(ToastContext) || {};
@@ -121,6 +135,28 @@ export function SyncProvider({ children }) {
     const syncQueue = () => setQueue(outbox.list());
     return outbox.subscribe(syncQueue);
   }, []);
+
+  // A background flush (app closed) leaves its outcome in the mirror mailbox.
+  // Reconcile on open: drop synced ids, apply errors, and toast the summary.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const box = await readResults();
+      if (!alive || !box) return;
+      await clearResults();
+      const { results } = box;
+      const ok = results.filter((r) => r.ok).map((r) => r.id);
+      const failed = results.filter((r) => !r.ok);
+      if (ok.length) outbox.remove(ok);
+      if (failed.length) for (const f of failed) outbox.markError([f.id], f.error);
+      if (ok.length && failed.length === 0) {
+        push?.(`${ok.length} offline ${ok.length === 1 ? 'entry was' : 'entries were'} synced.`, 'success');
+      } else if (failed.length) {
+        push?.(`${failed.length} ${failed.length === 1 ? 'entry needs' : 'entries need'} attention — ${failed[0].error}`, 'error');
+      }
+    })();
+    return () => { alive = false; };
+  }, [push]);
 
   const flush = useCallback(async () => {
     const pending = outbox.list();
@@ -140,6 +176,7 @@ export function SyncProvider({ children }) {
       setQueue(outbox.list());
       const result = { synced: ok.length, failed: failed.length, errors: failed.map((f) => `${f.error}`) };
       setLastResult(result);
+      if (ok.length && failed.length === 0) setLastSyncedAt(Date.now());
       if (ok.length && toast.current) {
         toast.current(`${ok.length} ${ok.length === 1 ? 'entry' : 'entries'} synced.`, 'success');
       }
@@ -179,6 +216,18 @@ export function SyncProvider({ children }) {
     return () => { alive = false; clearInterval(id); };
   }, [online, flush]);
 
+  // The service worker announces a newly activated build (see sw.js). Show it
+  // once — a field phone updates on the next restart, no forced reload.
+  useEffect(() => {
+    const onUpdated = () => {
+      if (sessionStorage.getItem('field-ledger:sw-updated')) return;
+      sessionStorage.setItem('field-ledger:sw-updated', '1');
+      toast.current?.('App updated — it will load fresh next time you open it.');
+    };
+    window.addEventListener('field-ledger:sw-updated', onUpdated);
+    return () => window.removeEventListener('field-ledger:sw-updated', onUpdated);
+  }, []);
+
   useEffect(() => { if (queue.length && online) flush(); }, [queue.length, online, flush]);
 
   const save = useCallback(async ({ type, payload, label }) => {
@@ -195,8 +244,8 @@ export function SyncProvider({ children }) {
   }, []);
 
   const value = useMemo(() => ({
-    online, queue, flushing, flush, save, lastResult,
-  }), [online, queue, flushing, flush, save, lastResult]);
+    online, queue, flushing, flush, save, lastResult, lastSyncedAt,
+  }), [online, queue, flushing, flush, save, lastResult, lastSyncedAt]);
 
   return <SyncContext.Provider value={value}>{children}</SyncContext.Provider>;
 }

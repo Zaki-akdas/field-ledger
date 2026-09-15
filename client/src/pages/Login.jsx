@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/context.jsx';
 import { useDarkMode } from '../lib/hooks.js';
-import { Btn, ErrorNote, Field, Input } from '../components/ui.jsx';
+import { Btn, ErrorNote, Field, Input, cx } from '../components/ui.jsx';
 
 export default function Login() {
   const { login, register, user } = useAuth();
@@ -43,63 +43,71 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-dvh lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,520px)]">
-      {/* The product statement — ink panel, no decoration. */}
-      <section className="hidden lg:flex flex-col justify-between bg-ink px-12 py-14 text-paper">
-        <div>
-          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-paper/60">Field Ledger</p>
-          <h1 className="mt-8 max-w-md text-[34px] font-semibold leading-[1.15] tracking-tight">
-            Every rupee and every invoice, traceable.
-          </h1>
-          <p className="mt-4 max-w-md text-[15px] leading-relaxed text-paper/70">
-            Salesmen log delivery, collection, cancellation and shortage from the shop counter.
-            The back office sees what is expected, what is collected, and exactly what is outstanding.
-          </p>
+    <div className="min-h-dvh flex flex-col bg-surface">
+      {/* Quiet top bar on mobile so the screen reads as a product, not a raw form. */}
+      <header className="flex items-center justify-between border-b border-line px-4 py-3 lg:hidden">
+        <div className="flex items-center gap-2">
+          <span className="h-7 w-7 flex items-center justify-center rounded-md bg-ink text-paper" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-paper/80">
+              <path d="M3 10h15M3 14h10M3 6h18" />
+            </svg>
+          </span>
+          <span className="text-[13px] font-semibold tracking-tight text-ink">Field Ledger</span>
         </div>
+        <button
+          type="button"
+          onClick={toggleDark}
+          className="h-8 w-8 flex items-center justify-center rounded-lg text-ink-faint hover:text-ink hover:bg-paper transition-colors"
+          aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {dark ? (
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          ) : (
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          )}
+        </button>
+      </header>
 
-        <div className="max-w-md">
-          <p className="text-[12px] uppercase tracking-wider text-paper/50">The whole product, in one line</p>
-          <pre className="num mt-3 whitespace-pre-wrap rounded-lg border border-paper/15 bg-paper/5 p-4 text-[13px] leading-relaxed text-paper/90">
-{`Expected = Bills − Cancelled − Short
-Actual   = Cash + Online + Cheque + Credit note
-Variance = Expected − Actual`}
-          </pre>
-        </div>
-      </section>
-
-      <section className="flex items-center justify-center px-5 py-8 safe-top sm:px-10 sm:py-10">
+      <section className="flex-1 flex items-center justify-center px-5 py-8 sm:px-10 sm:py-10">
         <div className="anim-rise w-full max-w-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div className="lg:hidden">
-              <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-ink-faint">Field Ledger</p>
-              <h1 className="mt-1 text-[24px] font-semibold tracking-tight sm:text-[26px]">
-                {mode === 'signin' ? 'Sign in' : 'Create your login'}
-              </h1>
-            </div>
-            <button
-              type="button"
-              onClick={toggleDark}
-              className="h-10 w-10 flex items-center justify-center rounded-lg text-ink-faint hover:text-ink hover:bg-surface transition-colors"
-              aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {dark ? (
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-              ) : (
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              )}
-            </button>
+          {/* Product lockup — hidden on desktop where the side panel carries it. */}
+          <div className="mb-8 lg:hidden">
+            <p className="text-[12px] font-medium uppercase tracking-[0.18em] text-ink-faint">Field Ledger</p>
+            <h1 className="mt-1 text-[24px] font-semibold tracking-tight text-ink">
+              {mode === 'signin' ? 'Sign in' : 'Create your login'}
+            </h1>
           </div>
-          <h1 className="hidden lg:block text-[26px] font-semibold tracking-tight mb-1">
-            {mode === 'signin' ? 'Sign in' : 'Create your login'}
-          </h1>
-          <p className="text-[14px] text-ink-soft mb-6">
-            {mode === 'signin'
-              ? 'Use the login code your office gave you — or make your own below.'
-              : 'Pick a login code for yourself. You get your own empty route and can start billing right away.'}
-          </p>
 
-          <form onSubmit={submit} className="space-y-4">
-            <Field label="Login code" hint={mode === 'signup' ? '3-20 letters, numbers or dashes — e.g. RAMESH-S' : undefined}>
+          <form onSubmit={submit} className="space-y-5">
+            {/* Mode toggle — above the fields so switching feels like changing screens. */}
+            <div className="flex rounded-lg border border-line bg-surface/60 p-0.5" role="tablist" aria-label="Sign in or create a login">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'signin'}
+                onClick={() => { setMode('signin'); setError(null); setCode(''); setPassword(''); setName(''); }}
+                className={cx(
+                  'flex-1 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors min-h-[44px] flex items-center justify-center',
+                  mode === 'signin' ? 'bg-ink text-paper' : 'text-ink-soft hover:bg-paper hover:text-ink'
+                )}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'signup'}
+                onClick={() => { setMode('signup'); setError(null); setCode(''); setPassword(''); setName(''); }}
+                className={cx(
+                  'flex-1 rounded-md px-3 py-2.5 text-[13.5px] font-medium transition-colors min-h-[44px] flex items-center justify-center',
+                  mode === 'signup' ? 'bg-ink text-paper' : 'text-ink-soft hover:bg-paper hover:text-ink'
+                )}
+              >
+                Create login
+              </button>
+            </div>
+
+            <Field label="Login code" hint={mode === 'signup' ? '3-20 letters, numbers or dashes — e.g. RAMESH-S' : 'Your office gave you this.'}>
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -111,8 +119,10 @@ Variance = Expected − Actual`}
                 className="uppercase placeholder:normal-case"
                 mono
                 required
+                autoFocus
               />
             </Field>
+
             {mode === 'signup' && (
               <Field label="Your name">
                 <Input
@@ -125,7 +135,8 @@ Variance = Expected − Actual`}
                 />
               </Field>
             )}
-            <Field label="Password">
+
+            <Field label="Password" hint={mode === 'signup' ? 'At least 6 characters.' : undefined}>
               <Input
                 type="password"
                 value={password}
@@ -144,20 +155,49 @@ Variance = Expected − Actual`}
             </Btn>
           </form>
 
-          <p className="mt-6 text-center text-[13px]">
+          <p className="mt-6 text-center text-[13px] text-ink-soft">
             {mode === 'signin' ? (
-              <button type="button" onClick={() => { setMode('signup'); setError(null); }} className="font-medium text-ink underline underline-offset-4">
-                New salesman? Create your own login
-              </button>
+              <>
+                <button type="button" onClick={() => { setMode('signup'); setError(null); setCode(''); setPassword(''); setName(''); }} className="font-medium text-ink underline underline-offset-4 hover:opacity-80">
+                  New salesman? Create your own login
+                </button>
+                <br />
+                <span className="block mt-2 text-[12.5px] text-ink-faint">Lost your login? Ask the back office to reset it.</span>
+              </>
             ) : (
-              <button type="button" onClick={() => { setMode('signin'); setError(null); }} className="font-medium text-ink underline underline-offset-4">
+              <button type="button" onClick={() => { setMode('signin'); setError(null); setCode(''); setPassword(''); setName(''); }} className="font-medium text-ink underline underline-offset-4 hover:opacity-80">
                 Already have a login? Sign in
               </button>
             )}
           </p>
-          <p className="mt-4 text-[12.5px] text-ink-faint text-center">
-            {mode === 'signin' ? 'Lost your login? Ask the back office to reset it.' : 'Office logins are provisioned privately — signup creates field accounts only.'}
+
+          {/* Footer hint — present on both modes so the screen doesn't feel naked. */}
+          <p className="mt-5 text-[11.5px] text-ink-faint text-center">
+            Signup creates field accounts only. Office logins are provisioned privately.
           </p>
+        </div>
+      </section>
+
+      {/* Desktop side statement — mirrors the existing panel, but deliberately quiet. */}
+      <section className="hidden lg:flex flex-col justify-between bg-ink px-12 py-14 text-paper" aria-hidden="true">
+        <div>
+          <p className="text-[13px] font-medium uppercase tracking-[0.18em] text-paper/60">Field Ledger</p>
+          <h1 className="mt-8 max-w-md text-[34px] font-semibold leading-[1.15] tracking-tight">
+            Every rupee and every invoice, traceable.
+          </h1>
+          <p className="mt-4 max-w-md text-[15px] leading-relaxed text-paper/70">
+            Salesmen log delivery, collection, cancellation and shortage from the shop counter.
+            The back office sees what is expected, what is collected, and exactly what is outstanding.
+          </p>
+        </div>
+
+        <div className="max-w-md">
+          <p className="text-[12px] uppercase tracking-wider text-paper/50">The whole product, in one line</p>
+          <pre className="num mt-3 whitespace-pre-wrap rounded-lg border border-paper/15 bg-paper/5 p-4 text-[13px] leading-relaxed text-paper/90">
+{`Expected = Bills − Cancelled − Short
+Actual   = Cash + Online + Cheque + Credit note
+Variance = Expected − Actual`}
+          </pre>
         </div>
       </section>
     </div>

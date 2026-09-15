@@ -457,8 +457,15 @@ export async function addShortItems({ payload = {}, user }) {
 
 /* ------------------------------------------------------------ delete --- */
 
+/** Normalized free-text reason for destructive actions: trimmed, capped, and
+ * always present in audit details so every row answers "why" uniformly. */
+function auditReason(reason) {
+  const r = String(reason || '').trim().slice(0, 300);
+  return r || '(not given)';
+}
+
 /** Delete a single bill (admin only). Refuses if the bill has collections against it. */
-export async function deleteBill({ billId, user }) {
+export async function deleteBill({ billId, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can delete bills.');
   const bill = await billRow(Number(billId));
   if (!bill) throw new HttpError(404, 'Bill not found.');
@@ -483,14 +490,14 @@ export async function deleteBill({ billId, user }) {
   await recordAudit({
     action: 'delete', entity: 'bill', entityId: bill.id,
     label: `${bill.invoice_no} · ${bill.shop_name}`,
-    details: { amount: bill.amount, shop_removed: shopRemoved },
+    details: { amount: bill.amount, shop_removed: shopRemoved, reason: auditReason(reason) },
     actor: user,
   });
   return { deleted: true };
 }
 
 /** Bulk-delete multiple bills (admin only). Skips bills with collections; returns counts. */
-export async function deleteBills({ ids, user }) {
+export async function deleteBills({ ids, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can delete bills.');
   const idList = Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
   if (idList.length === 0) throw new HttpError(400, 'Send an array of bill ids to delete.');
@@ -498,7 +505,7 @@ export async function deleteBills({ ids, user }) {
   const skipped = [];
   for (const id of idList) {
     try {
-      await deleteBill({ billId: id, user });
+      await deleteBill({ billId: id, user, reason });
       deleted.push(id);
     } catch (err) {
       skipped.push({ id, reason: err.message });
@@ -510,7 +517,7 @@ export async function deleteBills({ ids, user }) {
 /* ------------------------------------------------------------ salesman delete --- */
 
 /** Deactivate a salesman (soft-delete). Admin only. Refuses if they have any bills. */
-export async function deleteSalesman({ salesmanId, user }) {
+export async function deleteSalesman({ salesmanId, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage salesmen.');
   const id = Number(salesmanId);
   if (!id) throw new HttpError(400, 'Invalid salesman id.');
@@ -524,13 +531,14 @@ export async function deleteSalesman({ salesmanId, user }) {
   await recordAudit({
     action: 'delete', entity: 'salesman', entityId: id,
     label: `${s.name} (${s.code})`,
+    details: { reason: auditReason(reason) },
     actor: user,
   });
   return { deleted: true, salesman: s };
 }
 
 /** Bulk-deactivate salesmen (soft-delete). Admin only. Skips those with bills. */
-export async function deleteSalesmen({ ids, user }) {
+export async function deleteSalesmen({ ids, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage salesmen.');
   const idList = Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
   if (idList.length === 0) throw new HttpError(400, 'Send an array of salesman ids to delete.');
@@ -538,7 +546,7 @@ export async function deleteSalesmen({ ids, user }) {
   const skipped = [];
   for (const id of idList) {
     try {
-      await deleteSalesman({ salesmanId: id, user });
+      await deleteSalesman({ salesmanId: id, user, reason });
       deleted.push(id);
     } catch (err) {
       skipped.push({ id, reason: err.message });
@@ -550,7 +558,7 @@ export async function deleteSalesmen({ ids, user }) {
 /* ------------------------------------------------------------ shop delete --- */
 
 /** Delete a shop (admin only). Refuses if the shop has any bills. */
-export async function deleteShop({ shopId, user }) {
+export async function deleteShop({ shopId, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage shops.');
   const id = Number(shopId);
   if (!id) throw new HttpError(400, 'Invalid shop id.');
@@ -564,13 +572,14 @@ export async function deleteShop({ shopId, user }) {
   await recordAudit({
     action: 'delete', entity: 'shop', entityId: id,
     label: s.area ? `${s.name} · ${s.area}` : s.name,
+    details: { reason: auditReason(reason) },
     actor: user,
   });
   return { deleted: true, shop: s };
 }
 
 /** Bulk-delete shops (admin only). Skips those with bills; returns counts. */
-export async function deleteShops({ ids, user }) {
+export async function deleteShops({ ids, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can manage shops.');
   const idList = Array.isArray(ids) ? ids.map(Number).filter(Boolean) : [];
   if (idList.length === 0) throw new HttpError(400, 'Send an array of shop ids to delete.');
@@ -578,7 +587,7 @@ export async function deleteShops({ ids, user }) {
   const skipped = [];
   for (const id of idList) {
     try {
-      await deleteShop({ shopId: id, user });
+      await deleteShop({ shopId: id, user, reason });
       deleted.push(id);
     } catch (err) {
       skipped.push({ id, reason: err.message });
@@ -610,7 +619,7 @@ async function assertPassword(user, password) {
  * history all move into the trash with it. The shop row is deliberately
  * kept (purges are surgical, not tidy-ups) and its snapshot is restorable
  * for 30 days from the Trash page. */
-export async function purgeBill({ billId, user, password }) {
+export async function purgeBill({ billId, user, password, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can hard-delete bills.');
   await assertPassword(user, password);
   const bill = await billRow(Number(billId));
@@ -626,7 +635,7 @@ export async function purgeBill({ billId, user, password }) {
     await recordAudit({
       action: 'purge', entity: 'bill', entityId: bill.id,
       label: `${bill.invoice_no} · ${bill.shop_name}`,
-      details: { trash_id: t.id, restorable_until: t.expires_at, amount: bill.amount },
+      details: { trash_id: t.id, restorable_until: t.expires_at, amount: bill.amount, reason: auditReason(reason) },
       actor: user,
     });
     return { purged: true, id: bill.id, invoice_no: bill.invoice_no, trash_id: t.id, restorable_until: t.expires_at };
@@ -634,7 +643,7 @@ export async function purgeBill({ billId, user, password }) {
 }
 
 /** HARD delete one shop and every bill ever raised against it. */
-export async function purgeShop({ shopId, user, password }) {
+export async function purgeShop({ shopId, user, password, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can hard-delete shops.');
   await assertPassword(user, password);
   const id = Number(shopId);
@@ -670,7 +679,7 @@ export async function purgeShop({ shopId, user, password }) {
     await recordAudit({
       action: 'purge', entity: 'shop', entityId: id,
       label: `${shop.name}${shop.area ? ` · ${shop.area}` : ''}`,
-      details: { trash_id: t.id, restorable_until: t.expires_at, bills_removed: bills.length },
+      details: { trash_id: t.id, restorable_until: t.expires_at, bills_removed: bills.length, reason: auditReason(reason) },
       actor: user,
     });
     return { purged: true, id, shop: shop.name, bills_removed: bills.length, trash_id: t.id, restorable_until: t.expires_at };
@@ -679,7 +688,7 @@ export async function purgeShop({ shopId, user, password }) {
 
 /** HARD delete one salesman and their entire book — bills, collections,
  * shortages, cancellations, edit history and sessions all go to the bin. */
-export async function purgeSalesman({ salesmanId, user, password }) {
+export async function purgeSalesman({ salesmanId, user, password, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can hard-delete salesmen.');
   if (Number(salesmanId) === user.id) throw new HttpError(400, 'You cannot hard-delete your own account.');
   await assertPassword(user, password);
@@ -717,7 +726,7 @@ export async function purgeSalesman({ salesmanId, user, password }) {
     await recordAudit({
       action: 'purge', entity: 'salesman', entityId: id,
       label: `${s.name} (${s.code})`,
-      details: { trash_id: t.id, restorable_until: t.expires_at, bills_removed: bills.length },
+      details: { trash_id: t.id, restorable_until: t.expires_at, bills_removed: bills.length, reason: auditReason(reason) },
       actor: user,
     });
     return { purged: true, id, salesman: s.name, bills_removed: bills.length, trash_id: t.id, restorable_until: t.expires_at };

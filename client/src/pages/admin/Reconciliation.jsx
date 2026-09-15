@@ -58,18 +58,24 @@ export default function Reconciliation() {
                 : 'Collected more than expected — check the entries'}
           />
         </div>
-        <div className="flex flex-col gap-2 border-t border-line bg-paper/60 px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3 sm:px-5 lg:px-7">
+        <div className="flex flex-col gap-2 border-t border-line bg-paper/60 px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-1 sm:px-5 lg:px-7">
           <p className="text-[12.5px] text-ink-soft">
             <span className="num font-medium">{r.bill_count}</span> bills ·{' '}
             <span className="num font-medium">{r.cancelled_count}</span> cancelled ·{' '}
             {from === to ? dateLabel(from) : `${dateLabel(from)} → ${dateLabel(to)}`}
           </p>
-          <div className="flex gap-3 text-[12.5px]">
+          {/* Drill-downs for the Collected figure sit in the same line of
+              context, immediately after the counts — not pushed to the far
+              edge of the container (usability audit #3). */}
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12.5px]">
             <Link to="/admin/cash" className="font-medium text-ink underline underline-offset-4">Cash denominations</Link>
             <Link to="/admin/salesmen" className="font-medium text-ink underline underline-offset-4">Per salesman</Link>
           </div>
         </div>
-      </Card>        <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_300px]">
+      </Card>        {/* Equal columns: the mode and day tables have similar density, so a
+          50/50 split reads balanced — the earlier 1fr/300px split starved the
+          day table and left dead whitespace mid-page (usability audit #4). */}
+      <div className="grid gap-5 lg:grid-cols-2">
         <div className="min-w-0">
           <SectionTitle hint="How the money came in">Collected by mode</SectionTitle>
           <ResponsiveTable
@@ -111,8 +117,9 @@ export default function Reconciliation() {
         </div>
       </div>
 
-      <div className="mt-5 lg:mt-0 xl:col-span-2">
+      <div className="mt-5 lg:col-span-2">
         <SectionTitle
+          tight
           hint={salesmanId ? 'Filtered to one salesman' : 'Everyone on the route'}
           right={<Link to="/admin/salesmen"><Btn size="sm">Open salesman drill-down</Btn></Link>}
         >
@@ -131,13 +138,19 @@ export default function Reconciliation() {
             col('Variance', (s) => (s.row ? <Variance value={s.row.variance} /> : '—'), 'right', 'grid'),
             col('Bills', (s) => s.row?.bill_count ?? '—', 'right'),
             col('Day', (s) => (s.row?.day_ended ? `Ended ${s.row.day_ended}` : s.row?.day_started ? `Started ${s.row.day_started}` : 'Not started')),
+            // Affordance: the row opens the salesman's detail — say so on every
+            // row instead of relying on cursor:pointer alone (audit #5).
+            col('View', () => (
+              <span aria-hidden="true" className="text-ink-faint">›</span>
+            ), 'right'),
           ]}
           rows={(salesmen.data?.salesmen || []).map((s) => ({ ...s, row: (data.salesmen || []).find((x) => x.id === s.id) }))}
           empty={<Card className="p-5 text-[13.5px] text-ink-faint">No salesmen yet.</Card>}
           rowProps={(s) => ({
             tabIndex: 0,
             role: 'button',
-            className: 'cursor-pointer',
+            className: 'cursor-pointer hover:bg-paper/70 focus-visible:bg-paper/70 transition-colors',
+            'aria-label': `Open ${s.name}'s detail`,
             onClick: () => navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') }),
             onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/admin/salesmen/${s.id}?from=${from}&to=${to}`, { state: adminOriginState('/admin') }); } },
           })}

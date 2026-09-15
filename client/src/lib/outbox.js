@@ -1,7 +1,12 @@
 /**
  * Entries made without signal wait here. Each one carries the id the salesman's
  * phone generated, so a replay can never double-collect a payment.
+ *
+ * Every mutation is also mirrored into IndexedDB (lib/mirror.js) so the
+ * service worker can flush the queue via Background Sync with the app closed.
  */
+import { mirrorOutbox } from './mirror.js';
+
 const KEY = 'field-ledger:outbox:v1';
 const EVENT = 'field-ledger:outbox';
 
@@ -22,7 +27,12 @@ function read() {
 
 function write(list) {
   localStorage.setItem(KEY, JSON.stringify(list));
+  mirrorOutbox(list); // fire-and-forget: SW's view of the queue
   window.dispatchEvent(new CustomEvent(EVENT, { detail: list.length }));
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    // Ask the SW to (re)register the background-sync tag when entries exist.
+    navigator.serviceWorker.controller.postMessage({ type: 'outbox-changed', count: list.length });
+  }
 }
 
 export function list() {

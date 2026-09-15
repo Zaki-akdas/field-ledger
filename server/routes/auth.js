@@ -3,6 +3,11 @@ import { q1, qx } from '../db.js';
 import { createSession, destroySession, verifyPassword, hashPassword, publicUser, requireAuth } from '../auth.js';
 import { noteFailure, overLimit, clearSuccess } from '../loginThrottle.js';
 
+// The provisioner's well-known secrets (see tools/provision-accounts.mjs).
+// Rotation refuses to set any of them, so "changing" back to a default can't
+// silently recreate the leak.
+const WEAK_PASSWORDS = new Set(['admin123', 'ops123', 'field123']);
+
 /** Pre-auth user lookup — SECURITY DEFINER helper, legacy query as fallback. */
 async function findUserByCode(code) {
   try {
@@ -40,7 +45,10 @@ router.post('/login', async (req, res) => {
   // fresh failure budget so one typo burst can't linger for the full window.
   clearSuccess(attempted, req.ip);
   const token = await createSession(user);
-  res.json({ token, user: publicUser(user) });
+  // Forced rotation: the client routes a flagged session straight to the
+  // change-password screen; every other API call is refused until rotation
+  // completes (requireAuth → passwordChangeRequired).
+  res.json({ token, user: publicUser(user), must_change_password: Boolean(user.must_change_password) });
 });
 
 // Open salesman self-signup: a new field user picks their own login code,
@@ -94,7 +102,28 @@ router.post('/logout', async (req, res) => {
 });
 
 router.get('/me', requireAuth, (req, res) => {
-  res.json({ user: req.user });
+  // must_change_password rides along so the client can route a flagged
+  // session to the rotation screen on refresh, not just on login.
+  res.json({ user: { ...req.user, must_change_password: Boolean(req.user.must_change_password) } });
+});
+
+/**
+ * Step-up authentication for sensitive actions (purge, factory reset). The
+ * client calls this right before the destructive request; the server checks
+ * the caller's password NOW instead of trusting a possibly-hours-old login.
+ * Success mints a fresh session (new jti/expiry) so the action proceeds with
+ * a just-verified identity; the old token stays valid until its natural
+ * expiry so other open tabs are not signed out.
+ */
+router.post('/reauth', requireAuth, async (req, res) => {
+  const { password } = req.body || {};
+  if (!password) return res.status(400).json({ error: 'Enter your password to continue.' });
+  const user = await q1('SELECT * FROM users WHERE id = $1 AND active = 1', [req.user.id]);
+  if (!user || !verifyPassword(String(password), user.password_hash)) {
+    return res.status(401).json({ error: 'That password is not correct. The action was not performed.' });
+  }
+  const token = await createSession(user);
+  res.json({ token, user: publicUser(user) });
 });
 
 router.post('/password', requireAuth, async (req, res) => {
@@ -106,6 +135,14 @@ router.post('/password', requireAuth, async (req, res) => {
   if (!next || String(next).length < 6) {
     return res.status(400).json({ error: 'New password must be at least 6 characters.' });
   }
-  await qx('UPDATE users SET password_hash = $1 WHERE id = $2', [hashPassword(String(next)), user.id]);
+  // No reuse of the known provisioned secrets — a rotation back to a
+  // well-known default silently recreates the leak.
+  if (WEAK_PASSWORDS.has(String(next))) {
+    return res.status(400).json({ error: 'Choose a password you have not used here before — the seeded defaults are not allowed.' });
+  }
+  await qx('UPDATE users SET password_hash = $1, must_change_password = 0 WHERE id = $2', [hashPassword(String(next)), user.id]);
+  // Every other session dies with the rotation: a stolen token minted before
+  // the change is worthless afterwards.
+  await qx('DELETE FROM sessions WHERE user_id = $1 AND token <> $2', [user.id, req._token]);
   res.json({ ok: true });
 });

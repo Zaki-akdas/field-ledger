@@ -63,20 +63,20 @@ console.log('✓ Created helpers reading request.jwt.claims: current_user_id(), 
 // ────────────────────────────────────────────────────────────
 await c.query(`
   CREATE OR REPLACE FUNCTION app_find_user_by_code(p_code text)
-  RETURNS TABLE (id integer, code text, name text, role text, phone text, password_hash text)
+  RETURNS TABLE (id integer, code text, name text, role text, phone text, password_hash text, must_change_password integer)
   LANGUAGE sql SECURITY DEFINER SET search_path = public
   AS $$
-    SELECT id, code, name, role, phone, password_hash
+    SELECT id, code, name, role, phone, password_hash, must_change_password
     FROM users
     WHERE lower(code) = lower(p_code) AND active = 1
     LIMIT 1;
   $$;
 
   CREATE OR REPLACE FUNCTION app_session_user(p_token text)
-  RETURNS TABLE (id integer, code text, name text, role text, phone text)
+  RETURNS TABLE (id integer, code text, name text, role text, phone text, must_change_password integer)
   LANGUAGE sql SECURITY DEFINER SET search_path = public
   AS $$
-    SELECT u.id, u.code, u.name, u.role, u.phone
+    SELECT u.id, u.code, u.name, u.role, u.phone, u.must_change_password
     FROM sessions s JOIN users u ON u.id = s.user_id
     WHERE s.token = p_token AND u.active = 1
     LIMIT 1;

@@ -54,11 +54,26 @@ Your real connection string lives in `.env` (gitignored) — never commit it.
 
 ### Login accounts
 
+Provisioned accounts are created with **strong random passwords** (printed once by the
+provisioner) and are **forced to rotate at first sign-in** — the app refuses every route
+until the password is changed, and the old well-known defaults can never be set back.
+
 | Login code | Password | What you get |
+|---|---|---|
+| `admin` | random — rotate on first sign-in | Back office — every salesman, every day |
+| `ops` | random — rotate on first sign-in | Second back-office user |
+| `SLM-01` … `SLM-06` | random — rotate on first sign-in | Field app for one route (SLM-01 = Ramesh Yadav) |
+
+**Local development / test suite only:** `PROVIDE_SEEDED_PASSWORDS=1 npm run provision`
+resets the seeded accounts to the well-known dev passwords and clears the rotation flag:
+
+| Login code | Password (dev only) | What you get |
 |---|---|---|
 | `admin` | `admin123` | Back office — every salesman, every day |
 | `ops` | `ops123` | Second back-office user |
-| `SLM-01` … `SLM-06` | `field123` | Field app for one route (SLM-01 = Ramesh Yadav) |
+| `SLM-01` … `SLM-06` | `field123` | Field app for one route |
+
+Never run that against a production database — those passwords are public in this README.
 
 ---
 
@@ -210,6 +225,81 @@ still serves them from disk.
 
 ---
 
+## Backups & restore
+
+The ledger is the system of record for cash — treat backups as part of the product, not an
+optional extra.
+
+### Taking backups
+
+```bash
+npm run backup
+```
+
+Dumps **every table** (schema-aware: columns are read from `information_schema`, so new
+tables are picked up automatically) into one zip of CSVs plus a `manifest.json`, and stores
+it in **Supabase Storage** under `backups/` in the attachment bucket when the storage keys
+are set — otherwise in `server/backups/` on local disk. Runs anywhere Node runs; no `pg_dump`
+client tools needed, works through the transaction-mode pooler.
+
+Options:
+
+| Variable / flag | Meaning |
+|---|---|
+| `BACKUP_KEEP` | Retention — newest N backups kept, older pruned on every run (default 14) |
+| `BACKUP_DIR` | Override the local-disk destination |
+| `--out <path>` | Also write a local copy (restore tests, air-gapped hosts) |
+
+The backup includes password hashes (this is a full-restoration snapshot — the zip never
+leaves your storage account, unlike the `/api/admin/backup` download, which strips them).
+It captures **data, not schema**: restore expects the target schema to already exist
+(`npm run db:init` first), which keeps restores safe across app upgrades.
+
+### Scheduling
+
+**GitHub Actions (recommended for Vercel/Supabase deploys):** `.github/workflows/backup.yml`
+runs daily at 01:30 UTC. Add the repo secrets `DATABASE_URL`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY` (same values as Vercel), then run it once via
+**Actions → backup → Run workflow** to confirm.
+
+**VPS / cron:**
+
+```
+30 1 * * * cd /srv/field-ledger && npm run backup >> /var/log/fl-backup.log 2>&1
+```
+
+**Verify at least once**: run `npm run restore -- <file> --list` against a real backup and
+check the row counts look sane. A backup that has never been restored is a hope, not a plan.
+
+### Restoring
+
+```bash
+npm run db:init                                        # 1. target schema exists
+npm run restore -- server/backups/field-ledger-backup-….zip --list   # 2. inspect
+npm run restore -- <file> --yes --replace-live         # 3. restore (destructive)
+```
+
+`--list` validates the zip against its manifest and prints row counts without touching the
+database. The restore itself runs in **one transaction** — either the whole book comes back
+or nothing changes. Safety rails: refuses to run without `--yes` (or typing RESTORE at the
+prompt), refuses a zip whose row counts don't match its manifest, and refuses a live
+database with data unless `--replace-live` is passed.
+
+```bash
+npm run restore -- <file> --yes --replace-live
+```
+
+After a restore: users are back exactly as they were (including password hashes and rotation
+flags), sessions are wiped by the restore of the sessions table, and active phones will get
+a 401 on their next request and simply sign in again.
+
+> Backups made before the JSONB serializer fix stored object columns as the literal text
+> `[object Object]` — restore loads those rows with a `{"_corrupt": "pre-fix backup"}`
+> marker instead of failing. Re-run `npm run backup` once after upgrading so your latest
+> snapshot is complete.
+
+---
+
 ## Layout
 
 ```
@@ -219,6 +309,7 @@ server/
   mutations.js        every write operation + its validation (shared by HTTP and sync)
   routes/             auth · field · admin · sync · exports
   import.js           tolerant spreadsheet → bills importer
+  errors.js           error sink: client crashes + server faults → error_reports
 client/src/
   lib/                api · outbox (offline queue) · context (auth/toast/sync) · format
   components/         ui primitives · DenomGrid · StepRail · FieldLayout · AdminLayout
@@ -230,8 +321,13 @@ tools/
   loadtest.mjs        concurrency burst: reconciliation-heavy requests, fails on any
                       non-200 or EMAXCONNSESSION (the connection-cap regression guard)
   classcheck.mjs      proves every Tailwind class in the source exists in the built CSS
+  backup.mjs          full-table zip backup → Supabase Storage / local disk
+  restore.mjs         validates a backup and re-inserts every row atomically
   mkbook.mjs          makes a sample dispatch workbook for trying the importer
 ```
+
+Before launch: work through **PRODUCTION-CHECKLIST.md** — secrets, password
+rotation, a verified backup, and the monitoring hooks, one box at a time.
 
 ### Tests
 

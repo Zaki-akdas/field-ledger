@@ -19,12 +19,16 @@
     "check:classes": "node tools/classcheck.mjs",
     "lint": "eslint .",
     "db:init": "node --env-file-if-exists=.env tools/init-db.mjs",
+    "backup": "node --env-file-if-exists=.env tools/backup.mjs",
+    "restore": "node --env-file-if-exists=.env tools/restore.mjs",
     "db:migrate": "node --env-file-if-exists=.env tools/migrate-amounts-numeric.mjs",
-    "apitest": "node --env-file-if-exists=.env tools/apitest.mjs",
- "test:trash": "node --env-file-if-exists=.env tools/trash-e2e.mjs",
+    "apitest": "node --env-file-if-exists=.env tools/apitest.mjs",    "test:trash": "node --env-file-if-exists=.env tools/trash-e2e.mjs",
+    "test:status-drill": "node --env-file-if-exists=.env tools/status-drill.mjs",
+ "test:overflow": "node tools/overflow-check.mjs",
+ "test:offline": "node tools/sw-e2e.mjs",
     "leaktest": "node --env-file-if-exists=.env tools/leaktest.mjs",
     "loadtest": "node tools/loadtest.mjs",
-    "verify": "npm run build && npm run check:classes && npm run smoke && npm run test:trash"
+    "verify": "npm run build && npm run check:classes && npm run test:overflow && npm run smoke && npm run test:trash"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.0.13",

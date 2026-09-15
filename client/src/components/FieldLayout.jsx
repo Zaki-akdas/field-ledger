@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth, useSync } from '../lib/context.jsx';
 import { useApi, useDarkMode } from '../lib/hooks.js';
 import { useRealtime } from '../lib/realtime.js';
@@ -22,8 +22,22 @@ function NavIcon({ path }) {
 
 export default function FieldLayout() {
   const { user } = useAuth();
-  const { online, queue, flushing, flush } = useSync();
+  const { online, queue, flushing, flush, lastSyncedAt } = useSync();
   const location = useLocation();
+
+  // Background sync: once the salesman has queued entries, ask for the
+  // notification permission (doing it inside the field app keeps it
+  // contextual) and make sure the sync tag is registered so a closed app
+  // still flushes when signal returns.
+  const hasQueued = queue.length > 0;
+  useEffect(() => {
+    if (!hasQueued) return;
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+    navigator.serviceWorker?.ready?.then((reg) => reg.sync?.register('field-ledger-outbox-sync').catch(() => {})).catch(() => {});
+  }, [hasQueued]);
+
   // Which working tab launched a jump to My numbers — the Me page reads this
   // back and offers a shortcut to return to where the salesman tapped from.
   const originTab = location.pathname.startsWith('/field/bills')
@@ -61,6 +75,48 @@ export default function FieldLayout() {
   // A subtle green tick once everything on today's book has come in — only
   // when there actually is a book (an empty day never shows it).
   const allCollected = billed > 0 && collected >= billed - 0.5;
+
+  /* ── Connectivity / sync banner state ─────────────────────────────────
+   * One row, four states — ordered by what the salesman must act on:
+   *   syncing  — online, flush in flight (spinner)
+   *   queued   — entries waiting (online: Sync now works)
+   *   offline  — no signal; entries wait in the outbox, or nothing to do
+   *   synced   — brief all-clear right after a successful flush
+   * The header pill mirrors the state so it stays visible when the banner
+   * itself is scrolled away.
+   */
+  const [justSynced, setJustSynced] = useState(false);
+  useEffect(() => {
+    if (!lastSyncedAt) return undefined;
+    setJustSynced(true);
+    const t = setTimeout(() => setJustSynced(false), 4000);
+    return () => clearTimeout(t);
+  }, [lastSyncedAt]);
+
+  const syncState = flushing && queue.length > 0 ? 'syncing'
+    : queue.length > 0 ? 'queued'
+      : !online ? 'offline'
+        : justSynced ? 'synced'
+          : null;
+
+  const SYNC_BANNER = {
+    syncing: { tone: 'attention', text: `Syncing ${queue.length} ${queue.length === 1 ? 'entry' : 'entries'}…` },
+    queued: { tone: 'attention', text: `${queue.length} ${queue.length === 1 ? 'entry is' : 'entries are'} waiting to sync` },
+    offline: {
+      tone: 'attention',
+      text: queue.length > 0
+        ? `${queue.length} ${queue.length === 1 ? 'entry is' : 'entries are'} saved on this phone — will sync when signal returns`
+        : 'No signal — entries you make are saved and sync automatically',
+    },
+    synced: { tone: 'settled', text: 'All entries synced' },
+  };
+  const banner = syncState ? SYNC_BANNER[syncState] : null;
+  const pill = {
+    syncing: { label: 'Syncing…', cls: 'border-attention/40 bg-attention-tint text-attention-deep' },
+    queued: { label: `${queue.length} queued`, cls: 'border-attention/40 bg-attention-tint text-attention-deep' },
+    offline: { label: 'Offline', cls: 'border-attention/40 bg-attention-tint text-attention-deep' },
+    synced: null,
+  }[syncState];
 
   return (
     <div className="min-h-full">
@@ -127,9 +183,9 @@ export default function FieldLayout() {
             </p>
           </NavLink>
           <div className="flex items-center gap-2">
-            {!online && (
-              <span className="rounded-full border border-attention/40 bg-attention-tint px-2.5 py-1 text-[11px] font-medium text-attention-deep">
-                Offline
+            {pill && (
+              <span className={cx('rounded-full border px-2.5 py-1 text-[11px] font-medium', pill.cls)}>
+                {pill.label}
               </span>
             )}
             <span
@@ -154,27 +210,31 @@ export default function FieldLayout() {
         </div>
       </header>
 
-      {queue.length > 0 && (
-        <div className="border-b border-attention/25 bg-attention-tint">
+      {banner && (
+        <div className={cx('border-b', banner.tone === 'settled' ? 'border-settled/25 bg-settled-tint' : 'border-attention/25 bg-attention-tint')}>
           <div className="mx-auto flex max-w-[560px] items-center justify-between gap-3 px-4 py-2">
-            <p className="text-[12.5px] text-attention-deep">
-              <span className="num font-medium">{queue.length}</span>
-              {' '}{queue.length === 1 ? 'entry is' : 'entries are'} waiting to sync
-              {flushing && <Spinner className="ml-2" />}
+            <p className={cx('text-[12.5px]', banner.tone === 'settled' ? 'text-settled-deep' : 'text-attention-deep')}>
+              {banner.text}
+              {syncState === 'syncing' && <Spinner className="ml-2" />}
             </p>
-            <button
-              type="button"
-              onClick={flush}
-              disabled={flushing || !online}
-              className="rounded-md border border-attention/40 bg-surface px-2.5 py-1 text-[12px] font-medium text-attention-deep disabled:opacity-50"
-            >
-              {online ? 'Sync now' : 'No signal'}
-            </button>
+            {(syncState === 'queued' || syncState === 'offline') && (
+              <button
+                type="button"
+                onClick={flush}
+                disabled={flushing || !online}
+                className="rounded-md border border-attention/40 bg-surface px-2.5 py-1 text-[12px] font-medium text-attention-deep disabled:opacity-50"
+              >
+                {online ? 'Sync now' : 'No signal'}
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      <main key={location.pathname} className="anim-rise mx-auto max-w-[560px] px-3 pb-28 pt-3 sm:px-4 sm:pt-4 lg:max-w-[760px]">
+      {/* overflow-x-clip: full-bleed strips (chip rows use -mx-4) must be able
+          to extend to the screen edge without being able to widen the page —
+          the strips scroll internally, the document never scrolls sideways. */}
+      <main key={location.pathname} className="anim-rise mx-auto max-w-[560px] overflow-x-clip px-3 pb-28 pt-3 sm:px-4 sm:pt-4 lg:max-w-[760px]">
         <Outlet context={{ pendingCount, summary: data, reloadSummary: reload }} />
       </main>
       {/* Bottom nav — fixed on every screen. Safe-area inset is handled once

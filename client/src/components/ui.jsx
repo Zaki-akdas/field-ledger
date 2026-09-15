@@ -164,15 +164,17 @@ export function RefreshButton({ label = 'Refresh data', className = '' }) {
 }
 
 /* ----------------------------------------------------------- hard delete ---
- * Confirmation sheet for the irreversible purge. The admin types PURGE and
+ * Confirmation sheet for the irreversible purge. The admin types PURGE,
+ * gives a reason (free text, required — it lands in the audit log), and
  * re-enters their password — the password is verified server-side on every
  * call, so a stolen session alone can never wipe records.
  */
 export function PurgeSheet({ open, onClose, title, description, onConfirm, busy }) {
   const [word, setWord] = useState('');
   const [password, setPassword] = useState('');
-  const ready = word === 'PURGE' && password.length > 0;
-  const close = () => { setWord(''); setPassword(''); onClose(); };
+  const [reason, setReason] = useState('');
+  const ready = word === 'PURGE' && password.length > 0 && reason.trim().length > 0;
+  const close = () => { setWord(''); setPassword(''); setReason(''); onClose(); };
   return (
     <Sheet
       open={open}
@@ -186,7 +188,7 @@ export function PurgeSheet({ open, onClose, title, description, onConfirm, busy 
             block
             disabled={busy || !ready}
             onClick={async () => {
-              try { await onConfirm(password); close(); } catch { /* caller toasts the error */ }
+              try { await onConfirm(password, reason.trim()); close(); } catch { /* caller toasts the error */ }
             }}
           >
             {busy ? <Spinner /> : null}
@@ -202,11 +204,55 @@ export function PurgeSheet({ open, onClose, title, description, onConfirm, busy 
           days, so you can still put it back if this was a mistake.
         </ErrorNote>
         <p className="text-[14px] text-ink-soft">{description}</p>
+        <Field label="Reason (goes in the audit log)">
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Duplicate entry, wrong shop" maxLength={300} />
+        </Field>
         <Field label={`Type PURGE to enable the button`}>
           <Input value={word} onChange={(e) => setWord(e.target.value.toUpperCase())} placeholder="PURGE" autoCapitalize="characters" className="font-mono" />
         </Field>
         <Field label="Your password">
           <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" />
+        </Field>
+      </div>
+    </Sheet>
+  );
+}
+
+/* ------------------------------------------------------------ soft delete ---
+ * Confirmation sheet for plain deletes: asks for a reason (required — it
+ * lands in the audit log) instead of a bare window.confirm, which can't
+ * collect anything.
+ */
+export function DeleteSheet({ open, onClose, title, description, onConfirm, busy }) {
+  const [reason, setReason] = useState('');
+  const ready = reason.trim().length > 0;
+  const close = () => { setReason(''); onClose(); };
+  return (
+    <Sheet
+      open={open}
+      onClose={close}
+      title={title}
+      footer={(
+        <>
+          <Btn variant="secondary" block disabled={busy} onClick={close}>Cancel</Btn>
+          <Btn
+            variant="danger"
+            block
+            disabled={busy || !ready}
+            onClick={async () => {
+              try { await onConfirm(reason.trim()); close(); } catch { /* caller toasts the error */ }
+            }}
+          >
+            {busy ? <Spinner /> : null}
+            Delete
+          </Btn>
+        </>
+      )}
+    >
+      <div className="space-y-3">
+        {description && <p className="text-[14px] text-ink-soft">{description}</p>}
+        <Field label="Reason (goes in the audit log)">
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Entered twice by mistake" maxLength={300} autoFocus />
         </Field>
       </div>
     </Sheet>
@@ -219,11 +265,18 @@ export function Card({ children, className = '', as: As = 'div', ...rest }) {
   return <As className={cx('panel', className)} {...rest}>{children}</As>;
 }
 
-export function SectionTitle({ children, hint, right, className = '' }) {
+export function SectionTitle({ children, hint, right, className = '', tight = false }) {
   return (
-    <div className={cx('flex items-end justify-between gap-3 mb-2', className)}>
+    <div className={cx(
+      // tight: the action sits right beside the heading it belongs to, instead
+      // of pushed to the far edge of a wide section (opt-in per section).
+      tight ? 'mb-2 flex items-center gap-3' : 'flex items-end justify-between gap-3 mb-2',
+      className,
+    )}>
       <div>
-        <h2 className="text-[13px] font-semibold uppercase tracking-wider text-ink-soft">{children}</h2>
+        {/* Sentence case: section titles are full phrases, and long all-caps
+            runs read slower than sentence case (usability audit #2). */}
+        <h2 className="text-[13px] font-semibold text-ink-soft">{children}</h2>
         {hint && <p className="text-[12px] text-ink-faint mt-0.5">{hint}</p>}
       </div>
       {right}

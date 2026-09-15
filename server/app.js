@@ -13,6 +13,9 @@ import { router as adminRouter } from './routes/admin.js';
 import { router as syncRouter } from './routes/sync.js';
 import { router as exportRouter } from './routes/exports.js';
 import { router as realtimeRouter } from './realtime.js';
+import { router as errorsRouter } from './routes/errors.js';
+import { recordError, errorToReport } from './errors.js';
+import { router as statusRouter } from './status.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -93,7 +96,12 @@ app.use((req, res, next) => {
 
 // ── Routes ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+// Deeper status for uptime checkers (DB latency, storage, backup age) —
+// public like /health, self-cached 30 s so pollers add no real load.
+app.use('/api/status', statusRouter);
 app.use('/api/realtime', realtimeRouter);
+// Crash-report ingest — pre-auth, own rate limit, never throws to the client.
+app.use('/api/errors', apiLimiter, errorsRouter);
 // Only the pre-auth login route is throttled — failure budgets are enforced
 // inside the handler (see loginThrottle.js), this middleware is just the
 // per-IP attempt ceiling for runaway scripts.
@@ -149,7 +157,19 @@ app.use((err, _req, res, _next) => {
     return res.status(415).json({ error: err.message });
   }
   if (err.status && err.status < 500) console.warn('[rejected]', err.message);
-  else console.error('[error]', err);
+  else {
+    console.error('[error]', err);
+    // Capture 500s in the sink too — a server fault a user just hit should
+    // be visible to the operator without SSH-ing into the host for logs.
+    recordError(errorToReport(err, {
+      kind: 'request_error',
+      url: _req.originalUrl,
+      user_agent: _req.get?.('user-agent'),
+      user_id: _req.user?.id,
+      user_code: _req.user?.code,
+      context: { method: _req.method, status: err.status || 500 },
+    }));
+  }
   res.status(err.status || 500).json({ error: err.message || 'Something went wrong on the server.' });
 });
 

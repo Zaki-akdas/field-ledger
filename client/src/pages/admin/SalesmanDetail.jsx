@@ -7,7 +7,7 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { money, dateLabel, MODE_LABEL, STATUS_LABEL } from '../../lib/format.js';
 import {
-  Btn, Card, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
+  Btn, Card, DeleteSheet, ErrorNote, Loading, Money, Pill, ResponsiveTable, SectionTitle, Variance, col, cx,
 } from '../../components/ui.jsx';
 import AttachmentPhoto from '../../components/AttachmentPhoto.jsx';
 import BillEditSheet from '../../components/BillEditSheet.jsx';
@@ -23,6 +23,7 @@ export default function SalesmanDetail() {
   useTitle('Salesman');
   const navigate = useNavigate();
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null); // bill pending reason-prompted delete
   const { push } = useToast();
   const location = useLocation();
   const backTo = adminOriginOf(location);
@@ -92,7 +93,7 @@ export default function SalesmanDetail() {
             col('Actions', (b) => (
               <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 <Btn size="sm" variant="ghost" aria-label={`Edit ${b.invoice_no}`} onClick={(e) => { e.stopPropagation(); setEditing(b); }}>Edit</Btn>
-                <Btn size="sm" variant="ghost" className="text-red-500 hover:text-red-700" aria-label={`Delete ${b.invoice_no}`} onClick={async (e) => { e.stopPropagation(); if (!window.confirm(`Delete ${b.invoice_no}?`)) return; try { await api.del(`/admin/bills/${b.id}`); push(`Deleted ${b.invoice_no}`, 'success'); reload(); } catch (err) { push(err.message, 'error'); } }}>Delete</Btn>
+                <Btn size="sm" variant="ghost" className="text-red-500 hover:text-red-700" aria-label={`Delete ${b.invoice_no}`} onClick={(e) => { e.stopPropagation(); setDeleting(b); }}>Delete</Btn>
               </div>
             )),
           ]}
@@ -189,6 +190,23 @@ export default function SalesmanDetail() {
       )}
 
       <BillEditSheet bill={editing} onClose={() => setEditing(null)} onSaved={onEdited} />
+
+      <DeleteSheet
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete ${deleting.invoice_no}?` : ''}
+        description={deleting ? 'The bill is removed from the ledger. This cannot be undone from the app.' : ''}
+        onConfirm={async (reason) => {
+          try {
+            await api.del(`/admin/bills/${deleting.id}`, { body: { reason } });
+            push(`Deleted ${deleting.invoice_no}`, 'success');
+            setDeleting(null);
+            reload();
+          } catch (err) {
+            push(err.message, 'error');
+          }
+        }}
+      />
     </div>
   );
 }

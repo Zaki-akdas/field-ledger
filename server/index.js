@@ -1,5 +1,6 @@
 import { pool } from './db.js';
 import app from './app.js';
+import { recordError, errorToReport } from './errors.js';
 
 /**
  * Port resolution. `.env` (loaded by --env-file) sets PORT=4000, but Node's
@@ -57,9 +58,11 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // ── Unhandled errors ───────────────────────────────────────────────────
 process.on('unhandledRejection', (reason) => {
   console.error('[unhandledRejection]', reason);
+  recordError(errorToReport(reason, { kind: 'unhandledRejection' }));
 });
 
 process.on('uncaughtException', (err) => {
   console.error('[uncaughtException]', err);
+  recordError(errorToReport(err, { kind: 'uncaughtException' }));
   shutdown('uncaughtException');
 });

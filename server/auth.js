@@ -32,13 +32,30 @@ export function verifyPassword(password, stored) {
  */
 const JWT_TTL_S = Number(process.env.JWT_TTL_SECONDS || 7 * 24 * 60 * 60);
 
-/** Signing secret: pin with JWT_SECRET; otherwise derived from existing secrets. */
+/**
+ * Signing secret: pin with JWT_SECRET; otherwise derived from existing
+ * secrets. The derivation has two failure modes in production: rotating the
+ * database URL (routine on managed Postgres) silently invalidates every
+ * session, and the time-based last resort means a multi-instance host signs
+ * with different keys per boot. So production without JWT_SECRET refuses to
+ * start — dev keeps the convenient fallback.
+ */
 export function jwtSecret() {
   if (process.env.JWT_SECRET) return String(process.env.JWT_SECRET);
   const base = [process.env.DATABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY]
     .filter(Boolean)
     .join('|');
-  return crypto.createHash('sha256').update(base || String(Date.now())).digest('hex');
+  if (!base) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[auth] JWT_SECRET is required in production — set it in the environment and restart. Refusing to start with an unstable signing key.');
+      process.exit(1);
+    }
+    return crypto.createHash('sha256').update(String(Date.now())).digest('hex');
+  }
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[auth] JWT_SECRET is not set — signing key derived from DATABASE_URL. Rotating the database URL will sign everyone out; pin JWT_SECRET.');
+  }
+  return crypto.createHash('sha256').update(base).digest('hex');
 }
 
 const b64url = (value) => Buffer.from(value).toString('base64url');
@@ -141,7 +158,7 @@ export async function userForToken(token) {
     'SELECT * FROM app_session_user($1)',
     [token],
     `
-      SELECT u.id, u.code, u.name, u.role, u.phone
+      SELECT u.id, u.code, u.name, u.role, u.phone, u.must_change_password
       FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token = $1 AND u.active = 1`,
   );
@@ -163,6 +180,14 @@ export async function resolveUser(req, _res, next) {
 
 export function requireAuth(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Sign in to continue.' });
+  // Forced rotation gate: a flagged account may only rotate its password.
+  // requireAuth mounts on every protected router (auth, field, admin, sync,
+  // export); the one exemption is POST /api/auth/password itself. (req.path
+  // is router-relative, so the exemption keys on the pair.)
+  const rotating = req.baseUrl === '/api/auth' && req.path === '/password';
+  if (passwordChangeRequired(req) && !rotating) {
+    return res.status(403).json({ error: 'Change your password to continue.', code: 'password_change_required' });
+  }
   next();
 }
 
@@ -178,4 +203,14 @@ export function requireRole(role) {
 
 export function publicUser(u) {
   return { id: u.id, code: u.code, name: u.name, role: u.role, phone: u.phone };
+}
+
+/**
+ * Gate for forced password rotation. A provisioned account with a
+ * must_change_password flag may do exactly one thing: change its password.
+ * Everything else is refused, so a leaked seeded credential is useless to
+ * an attacker even before the real user rotates it.
+ */
+export function passwordChangeRequired(req) {
+  return Boolean(req.user?.must_change_password);
 }

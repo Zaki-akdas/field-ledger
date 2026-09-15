@@ -1,7 +1,15 @@
+import { reportError } from './errorReport.js';
+import { mirrorToken } from './mirror.js';
+
 const TOKEN_KEY = 'field-ledger:token';
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
-export const setToken = (t) => (t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY));
+export function setToken(t) {
+  if (t) localStorage.setItem(TOKEN_KEY, t);
+  else localStorage.removeItem(TOKEN_KEY);
+  // Background sync runs with the app closed — the worker reads its copy.
+  mirrorToken(t);
+}
 
 export class ApiError extends Error {
   constructor(message, { status = 0, offline = false, body = null } = {}) {
@@ -35,12 +43,25 @@ async function request(path, { method = 'GET', body, formData, signal } = {}) {
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { /* non-JSON error page */ }
 
+  // The service worker's last-resort stub (no network AND nothing cached):
+  // surface it as the ordinary offline error so pages fall back to their
+  // standard offline messaging instead of rendering a fake payload.
+  if (data && typeof data === 'object' && data.offline === true) {
+    throw new ApiError('No connection. Your entry is saved on this phone and will sync when signal returns.', { offline: true });
+  }
+
   if (res.status === 401 && !path.startsWith('/auth/')) {
     setToken(null);
     window.dispatchEvent(new Event('field-ledger:unauthorized'));
   }
 
   if (!res.ok) {
+    // Unexpected server faults belong in the sink — 4xx are the app working
+    // as designed (validation, auth), so only 5xx and the protocol-breaking
+    // empty responses are worth the operator's attention.
+    if (res.status >= 502 || (res.status >= 500 && res.status < 502 && !data?.error)) {
+      reportError(new Error(`API ${res.status}: ${path}`), { kind: 'api_5xx', context: { path, method, status: res.status } });
+    }
     throw new ApiError(data?.error || `Request failed (${res.status}).`, { status: res.status, body: data });
   }
   return data;

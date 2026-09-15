@@ -139,8 +139,17 @@ function signingSecret() {
   const base = [process.env.DATABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY]
     .filter(Boolean)
     .join('|');
-  // Never a constant when only the public DB URL is known; hash what we have.
-  return crypto.createHash('sha256').update(base || String(Date.now())).digest('hex');
+  // Same production posture as the JWT secret (server/auth.js): the
+  // time-based last resort would make attachment URLs instance-specific and
+  // worthless after a restart, so production must pin a real secret.
+  if (!base) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('[storage] UPLOAD_SIGN_SECRET is required in production — set it in the environment and restart. Refusing to start with an unstable signing key.');
+      process.exit(1);
+    }
+    return crypto.createHash('sha256').update(String(Date.now())).digest('hex');
+  }
+  return crypto.createHash('sha256').update(base).digest('hex');
 }
 
 /** Build a short-lived URL like /uploads/<name>?expires=…&sig=… */
@@ -175,6 +184,82 @@ export function verifySignedUpload(name, expires, sig) {
   const b = Buffer.from(String(sig));
   if (a.length !== b.length) return null;
   return crypto.timingSafeEqual(a, b) ? base : null;
+}
+
+/* ------------------------------------------------------------ status probes --- */
+
+/**
+ * Cheap reachability probe for GET /api/status. Storage mode is reported;
+ * remote mode does a tiny bucket list (service key, no user data leaves);
+ * local mode just requires the uploads dir to exist. Throws on failure.
+ */
+export async function storageProbe() {
+  if (!client) {
+    if (!fs.existsSync(UPLOAD_DIR)) throw new Error(`uploads dir missing: ${UPLOAD_DIR}`);
+    return { mode: 'local', detail: 'disk uploads dir present' };
+  }
+  const { error } = await client.storage.from(BUCKET).list('', { limit: 1 });
+  if (error) throw new Error(error.message);
+  return { mode: 'remote', detail: `bucket "${BUCKET}" reachable` };
+}
+
+/**
+ * Newest object under backups/ (the prefix tools/backup.mjs writes), for the
+ * status endpoint's backup-age check. Returns { name, created_at } or null.
+ */
+export async function latestRemoteBackup() {
+  if (!client) return null;
+  const { data, error } = await client.storage.from(BUCKET).list('backups', {
+    limit: 1000, sortBy: { column: 'created_at', order: 'desc' },
+  });
+  if (error) throw new Error(error.message);
+  const newest = (data || []).find((o) => o.name.endsWith('.zip'));
+  return newest ? { name: newest.name, created_at: newest.created_at } : null;
+}
+
+/**
+ * All stored backup zips, newest first — the admin System page's backup list.
+ * Local-disk mode reads server/backups/ (or BACKUP_DIR). Returns
+ * [{ name, created_at, size }] sorted newest first.
+ */
+export async function listBackups(limit = 30) {
+  if (!client) {
+    const dir = process.env.BACKUP_DIR || path.join(__dirname, 'backups');
+    if (!fs.existsSync(dir)) return [];
+    const rows = [];
+    for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.zip'))) {
+      const st = fs.statSync(path.join(dir, f));
+      rows.push({ name: f, created_at: st.mtime.toISOString(), size: st.size });
+    }
+    return rows.sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, limit);
+  }
+  const { data, error } = await client.storage.from(BUCKET).list('backups', {
+    limit: 1000, sortBy: { column: 'created_at', order: 'desc' },
+  });
+  if (error) throw new Error(error.message);
+  return (data || [])
+    .filter((o) => o.name.endsWith('.zip'))
+    .slice(0, limit)
+    .map((o) => ({ name: o.name, created_at: o.created_at, size: Number(o.metadata?.size || 0) }));
+}
+
+/**
+ * Fetch one backup zip's bytes by exact name (basename already checked by the
+ * route). Storage mode downloads the object; disk mode reads the file.
+ * Returns a Buffer or null when it doesn't exist.
+ */
+export async function readBackupFile(name) {
+  const base = path.basename(String(name || ''));
+  if (!base || base.includes('..')) return null;
+  if (!client) {
+    const dir = process.env.BACKUP_DIR || path.join(__dirname, 'backups');
+    const file = path.join(dir, base);
+    if (!fs.existsSync(file)) return null;
+    return fs.readFileSync(file);
+  }
+  const { data, error } = await client.storage.from(BUCKET).download(`backups/${base}`);
+  if (error || !data) return null;
+  return Buffer.from(await data.arrayBuffer());
 }
 
 /* ---------------------------------------------------------------- reads --- */

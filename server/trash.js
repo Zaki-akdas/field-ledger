@@ -189,7 +189,7 @@ export async function restoreTrash({ trashId, user }) {
 }
 
 /** Wipe one trash entry for good (no restore possible afterwards). */
-export async function purgeTrash({ trashId, user }) {
+export async function purgeTrash({ trashId, user, reason }) {
   if (user.role !== 'admin') throw new HttpError(403, 'Only the office can empty the bin.');
   const r = await q(
     'UPDATE trash SET purged_at = now()::text, purged_by = $1 WHERE id = $2 AND purged_at IS NULL RETURNING id, label, entity, entity_id',
@@ -199,7 +199,7 @@ export async function purgeTrash({ trashId, user }) {
   await recordAudit({
     action: 'trash_purge', entity: r[0].entity || 'trash', entityId: r[0].entity_id ?? null,
     label: r[0].label,
-    details: { trash_id: r[0].id },
+    details: { trash_id: r[0].id, reason: String(reason || '').trim().slice(0, 300) || '(not given)' },
     actor: user,
   });
   return { purged: true, id: r[0].id, label: r[0].label };

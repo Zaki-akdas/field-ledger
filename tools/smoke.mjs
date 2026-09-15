@@ -74,9 +74,20 @@ async function boot(pathname = '/') {
     pretendToBeVisual: true,
     virtualConsole: vc,
   });
-  // jsdom has no fetch; hand it Node's, resolving relative URLs.
+  // jsdom has no fetch; hand it Node's, resolving relative URLs. Node's fetch
+  // rejects AbortSignals from another realm (jsdom's AbortController), and the
+  // app passes a signal on every request — so strip it and carry the abort
+  // over ourselves via a Node-realm signal.
   const base = `http://127.0.0.1:${PORT}`;
-  dom.window.fetch = (input, init) => fetch(new URL(String(input), base).href, init);
+  dom.window.fetch = (input, init = {}) => {
+    const { signal, ...rest } = init;
+    const fwd = new AbortController();
+    if (signal) {
+      if (signal.aborted) fwd.abort();
+      else signal.addEventListener('abort', () => fwd.abort(), { once: true });
+    }
+    return fetch(new URL(String(input), base).href, { ...rest, signal: fwd.signal });
+  };
   if (!dom.window.crypto?.randomUUID) {
     Object.defineProperty(dom.window, 'crypto', { value: webcrypto, configurable: true });
   }
@@ -107,7 +118,28 @@ async function click(dom, needle, tag = 'a,button') {
     || all.find((e) => norm(e).includes(needle.toLowerCase()));
   if (!el) throw new Error(`Nothing clickable containing "${needle}"`);
   el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, view: dom.window }));
-  await wait(3600);
+  // Navigation is instant but data over the remote demo DB can take 6–10s;
+  // poll for the DOM to go quiet instead of betting on a fixed sleep.
+  await settle(dom);
+}
+
+// Wait until no fetch has completed for ~1.2s (or the cap expires). Cheap
+// proxy for "the page finished loading its data" on slow connections.
+async function settle(dom, cap = 20000) {
+  const t0 = Date.now();
+  let last = Date.now();
+  const counter = { n: 0 };
+  const orig = dom.window.fetch;
+  dom.window.fetch = (...args) => { counter.n += 1; last = Date.now(); return orig(...args); };
+  let quietFor = 0;
+  while (Date.now() - t0 < cap) {
+    await wait(400);
+    if (counter.n === 0) break; // nothing even started: already settled
+    if (Date.now() - last > 1200) break; // a fetch went >1.2s without a new one
+  }
+  dom.window.fetch = orig;
+  await wait(600); // let React commit the last response
+  return quietFor;
 }
 
 const results = [];

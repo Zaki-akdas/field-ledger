@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useApi, useTitle } from '../../lib/hooks.js';
-import { useToast } from '../../lib/context.jsx';
+import { useAuth, useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { dateLabel } from '../../lib/format.js';
 import {
-  Btn, Card, EmptyState, ErrorNote, Loading, Pill, RefreshButton, SectionTitle,
+  Btn, Card, EmptyState, ErrorNote, Loading, Pill, PurgeSheet, RefreshButton, SectionTitle,
 } from '../../components/ui.jsx';
 
 const ENTITY_LABEL = { bill: 'Bill', shop: 'Shop', salesman: 'Salesman' };
@@ -19,7 +19,10 @@ function daysLeft(expiresAt) {
 export default function Trash() {
   useTitle('Trash');
   const { push } = useToast();
+  const { reauth } = useAuth();
   const [busy, setBusy] = useState(null); // trash id currently being acted on
+  const [erasing, setErasing] = useState(null); // entry in the erase-forever sheet
+  const [eraseBusy, setEraseBusy] = useState(false);
   const { data, loading, error, reload } = useApi('/admin/trash');
   const entries = data?.entries || [];
 
@@ -40,9 +43,23 @@ export default function Trash() {
     () => api.post(`/admin/trash/${e.id}/restore`, {}),
     `${ENTITY_LABEL[e.entity]} restored — ${e.label} is back in the ledger.`);
 
-  const purge = (e) => {
-    if (!window.confirm(`Erase "${e.label}" from the bin for good? After this it can never be restored.`)) return;
-    act(e.id, () => api.post(`/admin/trash/${e.id}/purge`, {}), `Erased ${e.label} permanently.`);
+  // Erase-forever re-authenticates the admin first (POST /auth/reauth) and
+  // only then calls the purge — the server double-checks the password again
+  // inside the purge mutation itself.
+  const handleErase = async (password, reason) => {
+    setEraseBusy(true);
+    try {
+      await reauth(password);
+      await api.post(`/admin/trash/${erasing.id}/purge`, { password, reason });
+      push(`Erased ${erasing.label} permanently.`, 'success');
+      setErasing(null);
+      reload();
+    } catch (err) {
+      push(err.message, 'error');
+      throw err;
+    } finally {
+      setEraseBusy(false);
+    }
   };
 
   return (
@@ -92,7 +109,7 @@ export default function Trash() {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <Btn size="sm" onClick={() => restore(e)} disabled={busy === e.id}>Restore</Btn>
-                    <Btn size="sm" variant="outlineDanger" onClick={() => purge(e)} disabled={busy === e.id}>
+                    <Btn size="sm" variant="outlineDanger" onClick={() => setErasing(e)} disabled={busy === e.id}>
                       Erase forever
                     </Btn>
                   </div>
@@ -102,6 +119,15 @@ export default function Trash() {
           })}
         </div>
       )}
+
+      <PurgeSheet
+        open={!!erasing}
+        onClose={() => setErasing(null)}
+        title={`Erase ${erasing?.label || ''} forever?`}
+        description="This wipes the snapshot from the bin. After this, restore is impossible — even the 30-day window cannot bring it back."
+        onConfirm={handleErase}
+        busy={eraseBusy}
+      />
     </div>
   );
 }

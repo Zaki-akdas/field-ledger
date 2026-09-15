@@ -1,0 +1,31 @@
+# Scheduled database backup — dumps every table into a zip and uploads it to
+# Supabase Storage (backups/ prefix). Runs daily at 01:30 UTC; also on demand
+# via workflow_dispatch.
+#
+# Repo secrets needed (same values as the Vercel project):
+#   DATABASE_URL, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#
+# On a VPS without Actions, schedule it with cron instead:
+#   30 1 * * * cd /srv/field-ledger && npm run backup >> /var/log/fl-backup.log 2>&1
+name: backup
+
+on:
+  schedule:
+    - cron: '30 1 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run backup
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

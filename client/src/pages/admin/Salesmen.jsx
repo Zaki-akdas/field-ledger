@@ -7,7 +7,7 @@ import { useToast } from '../../lib/context.jsx';
 import { api } from '../../lib/api.js';
 import { relativeTime } from '../../lib/format.js';
 import {
-  Btn, ErrorNote, Loading, Money, PurgeSheet, ResponsiveTable, Variance, col, cx,
+  Btn, DeleteSheet, ErrorNote, Loading, Money, PurgeSheet, ResponsiveTable, Variance, col, cx,
 } from '../../components/ui.jsx';
 
 const COLUMNS = [
@@ -35,6 +35,8 @@ export default function Salesmen() {
   const [busy, setBusy] = useState(false);
   const [purging, setPurging] = useState(null);
   const [purgeBusy, setPurgeBusy] = useState(false);
+  const [deleting, setDeleting] = useState(null);      // single soft delete
+  const [bulkDeleting, setBulkDeleting] = useState(false); // bulk soft delete
   const { push } = useToast();
   const { data, loading, error, reload } = useApi(`/admin/salesmen?from=${from}&to=${to}${salesmanId ? `&salesmanId=${salesmanId}` : ''}`);
   const people = useApi('/salesmen');
@@ -76,13 +78,12 @@ export default function Salesmen() {
   };
 
   /* ---- single delete ---- */
-  const handleDelete = async (r, e) => {
-    e.stopPropagation();
-    if (!window.confirm(`Delete ${r.name} (${r.code})? This cannot be undone.`)) return;
+  const handleDelete = async (reason) => {
     setBusy(true);
     try {
-      await api.del(`/admin/salesmen/${r.id}`);
-      push(`Deleted ${r.name}.`, 'success');
+      await api.del(`/admin/salesmen/${deleting.id}`, { body: { reason } });
+      push(`Deleted ${deleting.name}.`, 'success');
+      setDeleting(null);
       reload();
       if (people.reload) people.reload();
     } catch (err) {
@@ -93,10 +94,10 @@ export default function Salesmen() {
   };
 
   /* ---- single hard delete ---- */
-  const handlePurge = async (password) => {
+  const handlePurge = async (password, reason) => {
     setPurgeBusy(true);
     try {
-      await api.post(`/admin/salesmen/${purging.id}/purge`, { password });
+      await api.post(`/admin/salesmen/${purging.id}/purge`, { password, reason });
       push(`Hard-deleted ${purging.name}. Their whole book is restorable from Trash for 30 days.`, 'success');
       setPurging(null);
       reload();
@@ -110,12 +111,10 @@ export default function Salesmen() {
   };
 
   /* ---- bulk delete ---- */
-  const handleBulkDelete = async () => {
-    if (selected.size === 0) return;
-    if (!window.confirm(`Delete ${selected.size} salesman${selected.size > 1 ? 's' : ''}? Those with bills will be skipped.`)) return;
+  const handleBulkDelete = async (reason) => {
     setBusy(true);
     try {
-      const r = await api.post('/admin/salesmen/delete', { ids: [...selected] });
+      const r = await api.post('/admin/salesmen/delete', { ids: [...selected], reason });
       const n = r.deleted?.length || 0;
       const skip = r.skipped?.length || 0;
       push(n ? `Deleted ${n} salesman${n > 1 ? 's' : ''}${skip ? `, skipped ${skip}` : ''}.` : 'Nothing was deleted.', n ? 'success' : 'error');
@@ -145,7 +144,7 @@ export default function Salesmen() {
       {selected.size > 0 && (
         <div className="mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm dark:bg-red-950/30">
           <span className="font-medium text-red-700 dark:text-red-300">{selected.size} selected</span>
-          <Btn size="sm" variant="danger" onClick={handleBulkDelete} disabled={busy}>Delete selected</Btn>
+          <Btn size="sm" variant="danger" onClick={() => { if (selected.size) setBulkDeleting(true); }} disabled={busy}>Delete selected</Btn>
           <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Btn>
         </div>
       )}
@@ -220,7 +219,7 @@ export default function Salesmen() {
                 variant="ghost"
                 className="text-red-500 hover:text-red-700"
                 aria-label={`Delete ${r.code}`}
-                onClick={(e) => { e.stopPropagation(); handleDelete(r, e); }}
+                onClick={(e) => { e.stopPropagation(); setDeleting(r); }}
                 disabled={busy}
               >
                 Delete
@@ -261,6 +260,17 @@ export default function Salesmen() {
       <p className="mt-2 text-[12px] text-ink-faint">
         Click a row to open that salesman's bills, collections, cancellations and shortages.
       </p>
+
+      <DeleteSheet
+        open={!!deleting || bulkDeleting}
+        onClose={() => { setDeleting(null); setBulkDeleting(false); }}
+        title={deleting ? `Delete ${deleting.name} (${deleting.code})?` : `Delete ${selected.size} salesman${selected.size > 1 ? 's' : ''}?`}
+        description={deleting
+          ? 'The salesman account is removed. This cannot be undone from the app.'
+          : 'Salesmen with bills will be skipped.'}
+        onConfirm={deleting ? handleDelete : handleBulkDelete}
+        busy={busy}
+      />
 
       <PurgeSheet
         open={!!purging}

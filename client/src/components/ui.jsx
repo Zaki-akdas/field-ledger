@@ -561,9 +561,12 @@ export function ResponsiveTable({ cols, rows, footer, empty, className = '', row
             </tr>
           ))}
           {rows.length === 0 && (
+            // Td forwards extra props, so colSpan actually lands on the <td> —
+            // previously a bare colSpan={…} on the JSX was silently dropped,
+            // collapsing the empty state into the first column width.
             <tr><Td colSpan={cols.length} className="py-10 text-center text-ink-faint">{empty}</Td></tr>
           )}
-          {footer && <tr><Td colSpan={cols.length}>{footer}</Td></tr>}
+          {footer && <tr><Td colSpan={cols.length} className="border-b-0 pt-2.5">{footer}</Td></tr>}
         </tbody>
       </TableWrap>
     </>
@@ -587,14 +590,17 @@ export function TableWrap({ children, className = '' }) {
 }
 
 export function Th({ children, className = '', align = 'left' }) {
+  // .table-dense thead th no longer hard-codes text-left (it out-specifies the
+  // alignment utilities and broke numeric-header alignment), so Th owns the
+  // alignment explicitly — left by default.
   return (
-    <th className={cx(align === 'right' && 'text-right', align === 'center' && 'text-center', className)}>{children}</th>
+    <th className={cx(align === 'right' && 'text-right', align === 'center' && 'text-center', align === 'left' && 'text-left', className)}>{children}</th>
   );
 }
 
-export function Td({ children, className = '', align = 'left' }) {
+export function Td({ children, className = '', align = 'left', ...rest }) {
   return (
-    <td className={cx(align === 'right' && 'text-right', align === 'center' && 'text-center', className)}>{children}</td>
+    <td className={cx(align === 'right' && 'text-right', align === 'center' && 'text-center', className)} {...rest}>{children}</td>
   );
 }
 

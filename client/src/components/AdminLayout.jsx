@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../lib/context.jsx';
 import { downloadExport, downloadBackup, api } from '../lib/api.js';
@@ -155,8 +155,11 @@ function SystemHealth({ health, refreshing }) {
   return (
     <div
       className={cx(
-        'rounded-lg px-2.5 py-2',
-        problems > 0 ? 'bg-attention-tint' : 'bg-surface',
+        // Quiet by design (usability audit #3): the amber wash made the card
+        // louder than the dashboard it serves. A single muted border — amber
+        // only when something is wrong — carries the same signal.
+        'rounded-lg border px-2.5 py-2',
+        problems > 0 ? 'border-attention/30 bg-surface' : 'border-line bg-surface',
       )}
       aria-label="System health"
       aria-busy={refreshing || undefined}
@@ -165,16 +168,21 @@ function SystemHealth({ health, refreshing }) {
         <HealthDot ok={database?.ok} label="Database" detail={database?.error || (database?.latency_ms != null ? `${database.latency_ms}ms` : '')} />
         <HealthDot ok={storage?.ok} label="Storage" detail={storage?.error || storage?.detail} />
         <HealthDot ok={!backup?.stale} label="Backup" detail={backup ? `${backup.age_hours}h old${backup.stale ? ' — stale' : ''}` : backup?.error} />
-        <span className={cx('num text-[10.5px] leading-none font-medium', problems > 0 ? 'text-attention-deep' : 'text-settled')}>
-          {problems > 0 ? `${problems} check${problems > 1 ? 's' : ''} ${problems > 1 ? 'need' : 'needs'} attention` : 'All systems normal'}
-        </span>
+        {/* 12px floor for body-size text (usability audit #2). Links to the
+            System page, where the drill-down detail lives. */}
+        <Link
+          to="/admin/system"
+          className={cx('num text-[12px] leading-none font-medium hover:underline', problems > 0 ? 'text-attention-deep' : 'text-settled')}
+        >
+          {problems > 0 ? `${problems} check${problems > 1 ? 's' : ''} need attention` : 'All systems normal'}
+        </Link>
         {refreshing && (
           <span className="ml-auto shrink-0" aria-hidden="true">
             <Spinner className="h-3 w-3" />
           </span>
         )}
       </div>
-      <div className="num mt-1.5 text-[10.5px] leading-none text-ink-faint">
+      <div className="num mt-1.5 text-[12px] leading-none text-ink-faint">
         <div className="flex items-center justify-between gap-2">
           <span>DB</span>
           <span className={cx(database?.ok ? 'text-ink-soft' : 'text-attention-deep font-semibold')}>

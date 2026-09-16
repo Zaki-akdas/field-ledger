@@ -4,7 +4,7 @@ import { useApi, useTitle } from '../../lib/hooks.js';
 import { useRange } from '../../components/AdminLayout.jsx';
 import { money, MODE_LABEL, dayLabel, dateLabel } from '../../lib/format.js';
 import {
-  Btn, Card, ErrorNote, Loading, Money, ResponsiveTable, SectionTitle, Variance, col, cx,
+  Card, ErrorNote, Loading, Money, ResponsiveTable, SectionTitle, Variance, col, cx,
 } from '../../components/ui.jsx';
 
 function Hero({ label, value, tone = 'ink', sub, subTone = 'text-ink-faint' }) {
@@ -38,7 +38,7 @@ export default function Reconciliation() {
           <Hero
             label="Expected"
             value={<Money value={r.expected} />}
-            sub={`Billed ${money(r.billed)} − cancelled ${money(r.cancelled_amount)} − short ${money(r.short_amount)}`}
+            sub={`Billed ${money(r.billed)} · cancelled ${money(r.cancelled_amount)} · short ${money(r.short_amount)}`}
           />
           <Hero
             label="Collected"
@@ -58,16 +58,17 @@ export default function Reconciliation() {
                 : 'Collected more than expected — check the entries'}
           />
         </div>
-        <div className="flex flex-col gap-2 border-t border-line bg-paper/60 px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-6 sm:gap-y-1 sm:px-5 lg:px-7">
-          <p className="text-[12.5px] text-ink-soft">
+        {/* Grid alignment (usability audit #4): this strip sits under the
+            three-column hero above, so its content mirrors that rhythm —
+            metadata spans the first two columns, the drill-down links land
+            in the third, where the Variance figure they explain sits. */}
+        <div className="grid grid-cols-1 gap-x-6 gap-y-1 border-t border-line bg-paper/60 px-4 py-2.5 sm:grid-cols-3 sm:px-5 lg:px-7">
+          <p className="text-[12.5px] text-ink-soft sm:col-span-2">
             <span className="num font-medium">{r.bill_count}</span> bills ·{' '}
             <span className="num font-medium">{r.cancelled_count}</span> cancelled ·{' '}
             {from === to ? dateLabel(from) : `${dateLabel(from)} → ${dateLabel(to)}`}
           </p>
-          {/* Drill-downs for the Collected figure sit in the same line of
-              context, immediately after the counts — not pushed to the far
-              edge of the container (usability audit #3). */}
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12.5px]">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] sm:justify-end">
             <Link to="/admin/cash" className="font-medium text-ink underline underline-offset-4">Cash denominations</Link>
             <Link to="/admin/salesmen" className="font-medium text-ink underline underline-offset-4">Per salesman</Link>
           </div>
@@ -91,12 +92,17 @@ export default function Reconciliation() {
               amount,
               entries: r.mode_entries.find((x) => x.mode === mode)?.entries || 0,
             }))}
-            footer={(
-              <div className="flex items-center justify-between rounded-xl border border-line bg-paper/60 px-3.5 py-2.5">
-                <span className="text-[12.5px] font-medium">Total</span>
-                <span className="num text-[13.5px] font-medium"><Money value={r.actual} /></span>
+            footer={
+              // A real footer row (usability audit #7): the total sits directly
+              // under the Amount column it sums, aligned with the data above,
+              // not as a pill-shaped div that read as a clickable button.
+              <div className="grid grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-3 rounded-xl border border-line bg-paper/60 px-3.5 py-2">
+                <span className="text-[12px] font-medium uppercase tracking-wider text-ink-faint">Total</span>
+                <span className="num text-right text-[13.5px] font-medium">{Object.values(r.by_mode).reduce((a, b) => a + b, 0).toLocaleString('en-IN')} entries</span>
+                <span className="num text-right text-[13.5px] font-medium"><Money value={r.actual} /></span>
+                <span className="text-right text-[12.5px] text-ink-faint">100%</span>
               </div>
-            )}
+            }
           />
         </div>
 
@@ -118,11 +124,7 @@ export default function Reconciliation() {
       </div>
 
       <div className="mt-5 lg:col-span-2">
-        <SectionTitle
-          tight
-          hint={salesmanId ? 'Filtered to one salesman' : 'Everyone on the route'}
-          right={<Link to="/admin/salesmen"><Btn size="sm">Open salesman drill-down</Btn></Link>}
-        >
+        <SectionTitle hint={salesmanId ? 'Filtered to one salesman' : 'Everyone on the route'}>
           Salesman-wise
         </SectionTitle>
         <ResponsiveTable
@@ -145,7 +147,19 @@ export default function Reconciliation() {
             ), 'right'),
           ]}
           rows={(salesmen.data?.salesmen || []).map((s) => ({ ...s, row: (data.salesmen || []).find((x) => x.id === s.id) }))}
-          empty={<Card className="p-5 text-[13.5px] text-ink-faint">No salesmen yet.</Card>}
+          empty={
+            // Empty state (usability audit #11): a CTA belongs in the empty
+            // region itself — the drill-down button no longer floats beside
+            // the heading, far from where the user is looking.
+            <div className="space-y-3">
+              <p>No salesmen yet.</p>
+              <p className="text-[12.5px]">
+                <Link to="/admin/salesmen" className="font-medium text-ink underline underline-offset-4">
+                  Open salesman drill-down →
+                </Link>
+              </p>
+            </div>
+          }
           rowProps={(s) => ({
             tabIndex: 0,
             role: 'button',

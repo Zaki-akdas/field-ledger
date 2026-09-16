@@ -124,8 +124,12 @@
     @apply w-full text-sm border-collapse;
   }
   .table-dense thead th {
-    @apply text-left text-[11px] uppercase tracking-wider text-ink-faint font-medium
+    @apply text-[11px] uppercase tracking-wider text-ink-faint font-medium
            px-3 py-2 border-b border-line whitespace-nowrap;
+    /* No text-left here on purpose: it out-specifies the `.text-right`/
+       `.text-center` utilities applied to individual <th>s, so numeric-column
+       headers rendered left-aligned while their data sat right-aligned.
+       <th>'s UA default is center; Th() adds the alignment utility explicitly. */
   }
   .table-dense tbody td {
     @apply whitespace-nowrap px-3 py-2.5 border-b border-line/70 align-middle;

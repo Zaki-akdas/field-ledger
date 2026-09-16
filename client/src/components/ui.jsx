@@ -571,8 +571,16 @@ export function ResponsiveTable({ cols, rows, footer, empty, className = '', row
 }
 
 export function TableWrap({ children, className = '' }) {
+  // tabIndex=0: a scrollable region must be keyboard-operable (WCAG 2.1.1 / 2.1.3
+  // — axe rule "scrollable-region-focusable"); without it, keyboard users cannot
+  // scroll clipped tables. role="region" + aria-label expose it to AT.
   return (
-    <div className={cx('overflow-x-auto rounded-xl border border-line bg-surface contain-scroll', className)}>
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label="Data table, scrollable"
+      className={cx('overflow-x-auto rounded-xl border border-line bg-surface contain-scroll focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-strong focus-visible:-outline-offset-2', className)}
+    >
       <table className="table-dense min-w-[480px] w-full grow">{children}</table>
     </div>
   );

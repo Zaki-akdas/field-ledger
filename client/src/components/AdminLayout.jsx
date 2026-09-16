@@ -360,7 +360,7 @@ export default function AdminLayout() {
           </nav>
           {/* Mobile: factory reset lives here because the sidebar footer is desktop-only. */}
           <div className="border-t border-line px-4 py-2 lg:hidden">
-            <button type="button" onClick={() => { setResetWord(''); setResetPassword(''); setResetReason(''); setResetOpen(true); }} className={cx(QUIET_ACTION, 'w-full text-[11.5px] text-attention/80 hover:bg-attention-tint hover:text-attention')}>
+            <button type="button" onClick={() => { setResetWord(''); setResetPassword(''); setResetReason(''); setResetOpen(true); }} className={cx(QUIET_ACTION, 'w-full text-[11.5px] text-attention hover:bg-attention-tint')}>
               Factory reset
             </button>
           </div>
@@ -403,7 +403,7 @@ export default function AdminLayout() {
             <button type="button" onClick={logout} className={cx(QUIET_ACTION, 'mt-1 w-full text-[12.5px] text-ink-faint hover:text-ink')}>
               Sign out
             </button>
-            <button type="button" onClick={() => { setResetWord(''); setResetPassword(''); setResetReason(''); setResetOpen(true); }} className={cx(QUIET_ACTION, 'mt-1 w-full text-[11.5px] text-attention/80 hover:bg-attention-tint hover:text-attention')}>
+            <button type="button" onClick={() => { setResetWord(''); setResetPassword(''); setResetReason(''); setResetOpen(true); }} className={cx(QUIET_ACTION, 'mt-1 w-full text-[11.5px] text-attention hover:bg-attention-tint')}>
               Factory reset
             </button>
           </div>

@@ -79,7 +79,14 @@ jobs:
         run: node tools/leaktest.mjs
 
       - name: Provision login accounts (no demo data)
+        # PROVIDE_SEEDED_PASSWORDS=1: the test suite signs in with the
+        # well-known seeded credentials (admin123 / field123); without the flag
+        # the provisioner issues strong random passwords and every login in
+        # apitest fails — which then trips the per-code lockout (429s) and
+        # cascades through the whole suite.
         run: node tools/provision-accounts.mjs
+        env:
+          PROVIDE_SEEDED_PASSWORDS: '1'
 
       - name: Start API server
         run: |

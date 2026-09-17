@@ -147,10 +147,39 @@ function HealthDot({ ok, label, detail }) {
   );
 }
 
-function SystemHealth({ health, refreshing }) {
+function SystemHealth({ health, refreshing, compact = false }) {
   if (!health?.checks) return null;
   const { database, storage, backup } = health.checks;
   const problems = [database, storage].filter((c) => c && !c.ok).length + (backup?.stale ? 1 : 0);
+
+  // Compact (mobile header strip): dots + summary only. The full DB/Storage/
+  // Backup detail block has a natural min-width the 320px header can't give
+  // it — it pushed every admin page +13px past the viewport. The detail
+  // lives one tap away on /admin/system (the summary line links there).
+  if (compact) {
+    return (
+      <div
+        className="min-w-0 rounded-lg border border-line bg-surface px-2 py-1.5"
+        aria-label="System health"
+        aria-busy={refreshing || undefined}
+      >
+        <div className="flex min-w-0 items-center gap-1">
+          <HealthDot ok={database?.ok} label="Database" detail={database?.error || (database?.latency_ms != null ? `${database.latency_ms}ms` : '')} />
+          <HealthDot ok={storage?.ok} label="Storage" detail={storage?.error || storage?.detail} />
+          <HealthDot ok={!backup?.stale} label="Backup" detail={backup ? `${backup.age_hours}h old${backup.stale ? ' — stale' : ''}` : backup?.error} />
+          <Link
+            to="/admin/system"
+            className={cx('num truncate text-[12px] leading-none font-medium hover:underline', problems > 0 ? 'text-attention-deep' : 'text-settled')}
+          >
+            {/* Short on purpose: the 320px strip truncates long summaries to
+                "1…" — two words survive and the dots carry the detail. */}
+            {problems > 0 ? `${problems} issue${problems > 1 ? 's' : ''}` : 'OK'}
+          </Link>
+          {refreshing && <Spinner className="h-3 w-3 shrink-0" />}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -316,8 +345,8 @@ export default function AdminLayout() {
               <p className="text-[15px] font-semibold tracking-tight">Field Ledger</p>
               <p className="hidden lg:block text-[11.5px] text-ink-faint">Back office</p>
             </div>
-            <div className="flex items-center gap-2 lg:hidden">
-              <SystemHealth health={health} refreshing={refreshing} />
+            <div className="flex min-w-0 flex-1 items-center gap-2 lg:hidden">
+              <SystemHealth health={health} refreshing={refreshing} compact />
               <IconBtn label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleDark} className="!h-8 !w-8 shrink-0">
                 {dark ? (
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
@@ -325,11 +354,11 @@ export default function AdminLayout() {
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 )}
               </IconBtn>
-              <span className="text-[12px] text-ink-soft">{user?.name}</span>
+              <span className="hidden min-[480px]:inline text-[12px] text-ink-soft">{user?.name}</span>
               {/* The 320px mobile strip has no room for padded button chrome —
                   keep it compact and shrinkable here; the styled quiet actions
                   live in the desktop sidebar footer (usability audit #6). */}
-              <button type="button" onClick={logout} className="text-[12px] text-ink-faint underline hover:text-ink">Sign out</button>
+              <button type="button" onClick={logout} className="whitespace-nowrap text-[12px] text-ink-faint underline hover:text-ink">Sign out</button>
             </div>
           </div>
           <nav className="stagger flex gap-0.5 overflow-x-auto px-2 py-2 no-scrollbar snap-x-scroll contain-scroll lg:block lg:flex-1 lg:space-y-0.5 lg:overflow-y-auto lg:px-2 lg:py-3" aria-label="Admin sections">
@@ -366,10 +395,11 @@ export default function AdminLayout() {
               );
             })}
           </nav>
-          {/* Mobile: factory reset lives here because the sidebar footer is desktop-only. */}
-          <div className="border-t border-line px-4 py-2 lg:hidden">
-            <button type="button" onClick={() => { setResetWord(''); setResetPassword(''); setResetReason(''); setResetOpen(true); }} className={cx(QUIET_ACTION, 'w-full text-[11.5px] text-attention hover:bg-attention-tint')}>
-              Factory reset
+          {/* Mobile: factory reset lives here because the sidebar footer is desktop-only.
+              Right-aligned utility link — it must not read as a page-level action. */}
+          <div className="flex justify-end border-t border-line px-4 py-1.5 lg:hidden">
+            <button type="button" onClick={() => { setResetWord(''); setResetPassword(''); setResetReason(''); setResetOpen(true); }} className="rounded-md px-2 py-1 text-[12px] text-attention-deep hover:bg-attention-tint transition-colors">
+              Factory reset…
             </button>
           </div>
           <div className="hidden lg:block lg:shrink-0 border-t border-line px-4 py-4">
